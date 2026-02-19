@@ -15,6 +15,7 @@ import {
 } from '@/lib/utils/formatting';
 import { ROUTES } from '@/lib/utils/constants';
 import { LiveScore } from '@/components/game/live-score';
+import { IntermissionCountdown } from '@/components/game/intermission-countdown';
 import { TeamLogo } from '@/components/team/team-logo';
 
 // ============================================================
@@ -103,6 +104,38 @@ async function getHomePageData() {
   ).length;
   const totalCount = weekGames.length;
 
+  // Intermission detection: 15-min window after the most recent featured game completes
+  const INTERMISSION_MS = 15 * 60 * 1000;
+  const recentFeatured = weekGames
+    .filter((g) => g.isFeatured && g.status === 'completed' && g.completedAt)
+    .sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime())[0];
+
+  let intermission: {
+    completedGame: NonNullable<Awaited<ReturnType<typeof hydrateGame>>>;
+    endsAt: string;
+    nextGame: Awaited<ReturnType<typeof hydrateGame>>;
+  } | null = null;
+
+  if (recentFeatured?.completedAt && !liveGame) {
+    const elapsed = Date.now() - recentFeatured.completedAt.getTime();
+    if (elapsed < INTERMISSION_MS) {
+      const hydratedCompleted = await hydrateGame(recentFeatured);
+      const upcomingGame = weekGames.find(
+        (g) => g.status === 'scheduled' && !g.isFeatured
+      );
+      const hydratedUpcoming = await hydrateGame(upcomingGame);
+      if (hydratedCompleted) {
+        intermission = {
+          completedGame: hydratedCompleted,
+          endsAt: new Date(
+            recentFeatured.completedAt.getTime() + INTERMISSION_MS
+          ).toISOString(),
+          nextGame: hydratedUpcoming,
+        };
+      }
+    }
+  }
+
   return {
     season,
     liveGame: hydratedLive,
@@ -111,6 +144,7 @@ async function getHomePageData() {
     standings: hydratedStandings,
     weekProgress: { completed: completedCount, total: totalCount },
     isLive: !!liveGame,
+    intermission,
   };
 }
 
@@ -150,8 +184,10 @@ export default async function HomePage() {
     );
   }
 
-  const { season, liveGame, nextGame, completedGames, standings, weekProgress, isLive } =
-    data;
+  const {
+    season, liveGame, nextGame, completedGames, standings,
+    weekProgress, isLive, intermission,
+  } = data;
 
   return (
     <>
@@ -194,6 +230,12 @@ export default async function HomePage() {
             {/* Main hero card */}
             {liveGame ? (
               <LiveGameHero game={liveGame} />
+            ) : intermission ? (
+              <IntermissionHero
+                completedGame={intermission.completedGame}
+                endsAt={intermission.endsAt}
+                nextGame={intermission.nextGame}
+              />
             ) : nextGame ? (
               <NextGameHero game={nextGame} />
             ) : (
@@ -485,6 +527,166 @@ function LiveGameHero({ game }: { game: GameCardData }) {
         </div>
       </Card>
     </Link>
+  );
+}
+
+function IntermissionHero({
+  completedGame,
+  endsAt,
+  nextGame,
+}: {
+  completedGame: GameCardData;
+  endsAt: string;
+  nextGame: GameCardData | null;
+}) {
+  const homeWon =
+    (completedGame.homeScore ?? 0) > (completedGame.awayScore ?? 0);
+  const awayWon =
+    (completedGame.awayScore ?? 0) > (completedGame.homeScore ?? 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Completed game final score */}
+      <Card
+        variant="elevated"
+        padding="lg"
+        className="relative overflow-hidden border-gold/20"
+      >
+        <div className="flex items-center gap-2 mb-6">
+          <Badge variant="final" size="md">
+            FINAL
+          </Badge>
+          {completedGame.isFeatured && (
+            <Badge variant="gold" size="sm">
+              Featured Game
+            </Badge>
+          )}
+        </div>
+
+        <div className="flex items-center justify-center gap-6 sm:gap-12">
+          {/* Away team */}
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mb-2">
+              <TeamLogo
+                abbreviation={completedGame.awayTeam?.abbreviation ?? '???'}
+                teamName={completedGame.awayTeam?.name ?? undefined}
+                size={80}
+                className={`w-full h-full object-contain drop-shadow-lg ${
+                  !awayWon ? 'opacity-50' : ''
+                }`}
+              />
+            </div>
+            <p className="text-xs sm:text-sm text-text-secondary">
+              {completedGame.awayTeam?.city ?? 'Unknown'}
+            </p>
+            <p className="text-sm sm:text-base font-bold">
+              {completedGame.awayTeam?.mascot ?? ''}
+            </p>
+          </div>
+
+          {/* Final score */}
+          <div className="text-center">
+            <div className="flex items-baseline gap-3 sm:gap-5">
+              <span
+                className={`font-mono text-4xl sm:text-6xl font-black tabular-nums ${
+                  awayWon ? 'text-gold' : 'text-text-muted'
+                }`}
+              >
+                {completedGame.awayScore ?? 0}
+              </span>
+              <span className="text-text-muted text-lg sm:text-2xl font-medium">
+                -
+              </span>
+              <span
+                className={`font-mono text-4xl sm:text-6xl font-black tabular-nums ${
+                  homeWon ? 'text-gold' : 'text-text-muted'
+                }`}
+              >
+                {completedGame.homeScore ?? 0}
+              </span>
+            </div>
+          </div>
+
+          {/* Home team */}
+          <div className="flex flex-col items-center text-center">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mb-2">
+              <TeamLogo
+                abbreviation={completedGame.homeTeam?.abbreviation ?? '???'}
+                teamName={completedGame.homeTeam?.name ?? undefined}
+                size={80}
+                className={`w-full h-full object-contain drop-shadow-lg ${
+                  !homeWon ? 'opacity-50' : ''
+                }`}
+              />
+            </div>
+            <p className="text-xs sm:text-sm text-text-secondary">
+              {completedGame.homeTeam?.city ?? 'Unknown'}
+            </p>
+            <p className="text-sm sm:text-base font-bold">
+              {completedGame.homeTeam?.mascot ?? ''}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex justify-center mt-6">
+          <Link href={ROUTES.GAME(completedGame.id)}>
+            <span className="inline-flex items-center gap-2 px-5 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors border border-border rounded-full">
+              View Game Recap &rarr;
+            </span>
+          </Link>
+        </div>
+      </Card>
+
+      {/* Countdown + next matchup preview */}
+      <Card
+        variant="glass"
+        padding="lg"
+        className="text-center"
+      >
+        <IntermissionCountdown endsAt={endsAt} />
+
+        {nextGame && (
+          <div className="mt-6 pt-6 border-t border-border">
+            <p className="text-xs text-text-muted tracking-wider uppercase mb-4">
+              Up Next
+            </p>
+            <div className="flex items-center justify-center gap-4 sm:gap-8">
+              <div className="flex items-center gap-2">
+                <TeamLogo
+                  abbreviation={nextGame.awayTeam?.abbreviation ?? '???'}
+                  teamName={nextGame.awayTeam?.name ?? undefined}
+                  size={36}
+                  className="w-9 h-9 object-contain"
+                />
+                <span className="text-sm font-bold">
+                  {nextGame.awayTeam?.abbreviation ?? '???'}
+                </span>
+              </div>
+              <span className="text-text-muted text-sm font-medium">vs</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-bold">
+                  {nextGame.homeTeam?.abbreviation ?? '???'}
+                </span>
+                <TeamLogo
+                  abbreviation={nextGame.homeTeam?.abbreviation ?? '???'}
+                  teamName={nextGame.homeTeam?.name ?? undefined}
+                  size={36}
+                  className="w-9 h-9 object-contain"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-center mt-4">
+              <Link href={ROUTES.GAME(nextGame.id)}>
+                <span className="inline-flex items-center gap-2 px-6 py-2.5 bg-gold text-midnight font-bold text-sm rounded-full hover:bg-gold-bright transition-colors shadow-lg shadow-gold/20">
+                  MAKE YOUR PREDICTION
+                </span>
+              </Link>
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
   );
 }
 

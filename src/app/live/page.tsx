@@ -29,14 +29,28 @@ async function getLiveGame() {
       and(eq(games.seasonId, season.id), eq(games.week, season.currentWeek))
     );
 
-  // Find a live game first, then a completed featured game
+  // Find a live game first
   const liveGame =
     weekGames.find((g) => g.status === 'broadcasting') ??
     weekGames.find((g) => g.status === 'simulating');
 
   if (liveGame) return { type: 'live' as const, gameId: liveGame.id };
 
-  // If no live game, find the most recent completed game
+  // Check for intermission (recently completed featured game within 15 min)
+  const INTERMISSION_MS = 15 * 60 * 1000;
+  const recentFeatured = weekGames
+    .filter((g) => g.isFeatured && g.status === 'completed' && g.completedAt)
+    .sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime())[0];
+
+  if (recentFeatured?.completedAt) {
+    const elapsed = Date.now() - recentFeatured.completedAt.getTime();
+    if (elapsed < INTERMISSION_MS) {
+      // During intermission, redirect to the completed game so users can see the recap
+      return { type: 'completed' as const, gameId: recentFeatured.id };
+    }
+  }
+
+  // If no live game and no intermission, find the most recent completed game
   const recentCompleted = weekGames
     .filter((g) => g.status === 'completed')
     .sort((a, b) => {

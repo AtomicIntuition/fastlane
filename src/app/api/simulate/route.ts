@@ -173,9 +173,17 @@ async function determineNextAction(): Promise<SimAction> {
   if (activeGame) {
     if (activeGame.status === 'broadcasting' && activeGame.broadcastStartedAt) {
       const broadcastDuration = Date.now() - new Date(activeGame.broadcastStartedAt).getTime();
-      const MIN_BROADCAST = process.env.NODE_ENV === 'production'
-        ? 5 * 60 * 1000   // 5 minutes in production
-        : 30 * 1000;      // 30 seconds in dev
+
+      // Query actual game event duration instead of using a fixed minimum
+      const lastEvent = await db
+        .select()
+        .from(gameEvents)
+        .where(eq(gameEvents.gameId, activeGame.id))
+        .orderBy(desc(gameEvents.displayTimestamp))
+        .limit(1);
+      const gameDurationMs = lastEvent[0]?.displayTimestamp ?? 0;
+      const MIN_BROADCAST = gameDurationMs + 60_000; // full event stream + 60s buffer
+
       if (broadcastDuration >= MIN_BROADCAST) {
         // Broadcast duration met — complete the game and update standings
         await db
@@ -203,6 +211,34 @@ async function determineNextAction(): Promise<SimAction> {
       }
     } else {
       return { type: 'idle', message: 'Game currently being simulated' };
+    }
+  }
+
+  // ---- Intermission: 15 min pause after a featured broadcast finishes ----
+  const INTERMISSION_MS = 15 * 60 * 1000;
+
+  const lastFeaturedCompleted = weekGames
+    .filter((g) => g.status === 'completed' && g.completedAt && g.isFeatured)
+    .sort((a, b) => b.completedAt!.getTime() - a.completedAt!.getTime())[0];
+
+  if (lastFeaturedCompleted?.completedAt) {
+    const elapsed = Date.now() - lastFeaturedCompleted.completedAt.getTime();
+    if (elapsed < INTERMISSION_MS) {
+      // During intermission: complete background games but don't start next featured
+      const hasScheduledBgGames = weekGames.some(
+        (g) => !g.isFeatured && g.status === 'scheduled'
+      );
+      if (hasScheduledBgGames) {
+        return {
+          type: 'complete_week',
+          seasonId: season.id,
+          week: season.currentWeek,
+        };
+      }
+      return {
+        type: 'idle',
+        message: `Intermission — next game in ${Math.ceil((INTERMISSION_MS - elapsed) / 60000)} min`,
+      };
     }
   }
 
@@ -237,17 +273,19 @@ async function determineNextAction(): Promise<SimAction> {
       };
     }
 
-    // No featured game at all -- pick the first scheduled game as featured
-    const gameToFeature = scheduledGames[0];
+    // No featured game at all — pick the most appealing game to feature
+    const bestGameId = await pickBestFeaturedGame(
+      scheduledGames, season.id, season.currentWeek
+    );
     await db
       .update(games)
       .set({ isFeatured: true })
-      .where(eq(games.id, gameToFeature.id));
+      .where(eq(games.id, bestGameId));
 
     return {
       type: 'start_game',
       seasonId: season.id,
-      gameId: gameToFeature.id,
+      gameId: bestGameId,
     };
   }
 
@@ -360,18 +398,18 @@ async function handleCreateSeason() {
     totalGamesCreated += gameValues.length;
   }
 
-  // Mark one game in week 1 as featured (pick first game for now)
+  // Pick the most appealing game in week 1 as featured
   const week1Games = await db
     .select()
     .from(games)
-    .where(and(eq(games.seasonId, seasonId), eq(games.week, 1)))
-    .limit(1);
+    .where(and(eq(games.seasonId, seasonId), eq(games.week, 1)));
 
   if (week1Games.length > 0) {
+    const featuredId = await pickBestFeaturedGame(week1Games, seasonId, 1);
     await db
       .update(games)
       .set({ isFeatured: true })
-      .where(eq(games.id, week1Games[0].id));
+      .where(eq(games.id, featuredId));
   }
 
   // Initialize standings for all teams
@@ -555,9 +593,16 @@ async function handleCompleteWeek(seasonId: string, week: number) {
     if (bg.broadcastStartedAt) {
       const elapsed =
         Date.now() - new Date(bg.broadcastStartedAt).getTime();
-      const MIN_BROADCAST_CW = process.env.NODE_ENV === 'production'
-        ? 5 * 60 * 1000   // 5 minutes in production
-        : 30 * 1000;      // 30 seconds in dev
+
+      // Query actual game event duration instead of using a fixed minimum
+      const lastEvt = await db
+        .select()
+        .from(gameEvents)
+        .where(eq(gameEvents.gameId, bg.id))
+        .orderBy(desc(gameEvents.displayTimestamp))
+        .limit(1);
+      const bgDurationMs = lastEvt[0]?.displayTimestamp ?? 0;
+      const MIN_BROADCAST_CW = bgDurationMs + 60_000; // full event stream + 60s buffer
 
       if (elapsed >= MIN_BROADCAST_CW) {
         await db
@@ -704,11 +749,16 @@ async function handleAdvanceWeek(seasonId: string) {
 
   const hasFeatured = nextWeekGames.some((g) => g.isFeatured);
   if (!hasFeatured && nextWeekGames.length > 0) {
-    // Pick the featured game — for now pick the first, later use appeal scoring
-    await db
-      .update(games)
-      .set({ isFeatured: true })
-      .where(eq(games.id, nextWeekGames[0].id));
+    const scheduled = nextWeekGames.filter((g) => g.status === 'scheduled');
+    if (scheduled.length > 0) {
+      const featuredId = await pickBestFeaturedGame(
+        scheduled, seasonId, nextWeek
+      );
+      await db
+        .update(games)
+        .set({ isFeatured: true })
+        .where(eq(games.id, featuredId));
+    }
   }
 
   return {
@@ -869,14 +919,13 @@ async function generateWildCardGames(seasonId: string): Promise<number> {
 
   if (wcGames.length > 0) {
     await db.insert(games).values(wcGames);
-    // Mark first game as featured
     const inserted = await db
       .select()
       .from(games)
-      .where(and(eq(games.seasonId, seasonId), eq(games.week, 19)))
-      .limit(1);
+      .where(and(eq(games.seasonId, seasonId), eq(games.week, 19)));
     if (inserted.length > 0) {
-      await db.update(games).set({ isFeatured: true }).where(eq(games.id, inserted[0].id));
+      const featuredId = await pickBestFeaturedGame(inserted, seasonId, 19);
+      await db.update(games).set({ isFeatured: true }).where(eq(games.id, featuredId));
     }
   }
 
@@ -989,10 +1038,10 @@ async function generateDivisionalGames(seasonId: string): Promise<number> {
     const inserted = await db
       .select()
       .from(games)
-      .where(and(eq(games.seasonId, seasonId), eq(games.week, 20)))
-      .limit(1);
+      .where(and(eq(games.seasonId, seasonId), eq(games.week, 20)));
     if (inserted.length > 0) {
-      await db.update(games).set({ isFeatured: true }).where(eq(games.id, inserted[0].id));
+      const featuredId = await pickBestFeaturedGame(inserted, seasonId, 20);
+      await db.update(games).set({ isFeatured: true }).where(eq(games.id, featuredId));
     }
   }
 
@@ -1077,10 +1126,10 @@ async function generateConferenceChampionshipGames(seasonId: string): Promise<nu
     const inserted = await db
       .select()
       .from(games)
-      .where(and(eq(games.seasonId, seasonId), eq(games.week, 21)))
-      .limit(1);
+      .where(and(eq(games.seasonId, seasonId), eq(games.week, 21)));
     if (inserted.length > 0) {
-      await db.update(games).set({ isFeatured: true }).where(eq(games.id, inserted[0].id));
+      const featuredId = await pickBestFeaturedGame(inserted, seasonId, 21);
+      await db.update(games).set({ isFeatured: true }).where(eq(games.id, featuredId));
     }
   }
 
@@ -1253,6 +1302,123 @@ async function updateStandings(
       })
       .where(eq(standings.id, as_.id));
   }
+}
+
+// ============================================================
+// Helper: Pick the most compelling featured game via appeal scoring
+// ============================================================
+
+/**
+ * Score each scheduled game and return the ID of the most appealing one.
+ *
+ * Factors (mirrors src/lib/scheduling/featured-game-picker.ts):
+ *   +30  Both teams in playoff contention
+ *   +20  Division rivalry
+ *   +15  Close records (within 2 wins)
+ *   +15  Both teams have winning records
+ *   +10  High combined ratings
+ *   +10  Undefeated team involved
+ *   +10  Winless team in danger
+ *   +10  Late season (week 15+)
+ *    +5  Super Bowl rematch proxy
+ */
+async function pickBestFeaturedGame(
+  scheduledGames: (typeof games.$inferSelect)[],
+  seasonId: string,
+  currentWeek: number,
+): Promise<string> {
+  if (scheduledGames.length <= 1) return scheduledGames[0].id;
+
+  const allTeamRows = await db.select().from(teams);
+  const teamMap = new Map(allTeamRows.map((t) => [t.id, t]));
+
+  const standingRows = await db
+    .select()
+    .from(standings)
+    .where(eq(standings.seasonId, seasonId));
+  const standingMap = new Map(standingRows.map((s) => [s.teamId, s]));
+
+  let bestId = scheduledGames[0].id;
+  let bestScore = -1;
+
+  for (const g of scheduledGames) {
+    const home = teamMap.get(g.homeTeamId);
+    const away = teamMap.get(g.awayTeamId);
+    const hs = standingMap.get(g.homeTeamId);
+    const as_ = standingMap.get(g.awayTeamId);
+
+    let score = 0;
+
+    // +30: Both in playoff contention (not eliminated)
+    if (hs?.clinched !== 'eliminated' && as_?.clinched !== 'eliminated') {
+      score += 30;
+    }
+
+    // +20: Division rivalry
+    if (
+      home && away &&
+      home.conference === away.conference &&
+      home.division === away.division
+    ) {
+      score += 20;
+    }
+
+    // +15: Close records (within 2 wins)
+    if (hs && as_) {
+      if (Math.abs((hs.wins ?? 0) - (as_.wins ?? 0)) <= 2) score += 15;
+    }
+
+    // +15: Both winning records
+    if (
+      hs && as_ &&
+      (hs.wins ?? 0) > (hs.losses ?? 0) &&
+      (as_.wins ?? 0) > (as_.losses ?? 0)
+    ) {
+      score += 15;
+    }
+
+    // +10: High combined ratings (>340)
+    if (home && away) {
+      const combined =
+        home.offenseRating + home.defenseRating +
+        away.offenseRating + away.defenseRating;
+      if (combined > 340) score += 10;
+    }
+
+    // +10: Undefeated team involved
+    if (
+      (hs && (hs.losses ?? 0) === 0 && (hs.wins ?? 0) > 0) ||
+      (as_ && (as_.losses ?? 0) === 0 && (as_.wins ?? 0) > 0)
+    ) {
+      score += 10;
+    }
+
+    // +10: Winless team in danger
+    if (
+      (hs && (hs.wins ?? 0) === 0 && (hs.losses ?? 0) > 0) ||
+      (as_ && (as_.wins ?? 0) === 0 && (as_.losses ?? 0) > 0)
+    ) {
+      score += 10;
+    }
+
+    // +10: Late season (week 15+)
+    if (currentWeek >= 15) score += 10;
+
+    // +5: Super Bowl rematch proxy (both top-2 seeds, different conferences)
+    if (
+      hs?.playoffSeed != null && as_?.playoffSeed != null &&
+      hs.playoffSeed <= 2 && as_.playoffSeed <= 2
+    ) {
+      score += 5;
+    }
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestId = g.id;
+    }
+  }
+
+  return bestId;
 }
 
 // ============================================================
