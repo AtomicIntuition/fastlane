@@ -144,25 +144,25 @@ export function GameViewer({ gameId }: GameViewerProps) {
     <div className={`flex flex-col min-h-dvh ${celebrationClass}`}>
       {/* ── Mobile Layout ── */}
       <div className="flex flex-col h-dvh lg:hidden">
-        {/* Top section: Field + Momentum */}
+        {/* Scoreboard at top */}
+        <ScoreBug
+          gameState={gameState}
+          status={status === 'game_over' ? 'game_over' : 'live'}
+        />
+
+        {/* Banners + Field + Momentum */}
         <div className="flex-shrink-0">
-          {/* Catchup indicator */}
           {isCatchup && (
-            <div className="bg-info/10 border-b border-info/20 px-3 py-1.5 text-center">
+            <div className="bg-info/10 border-b border-info/20 px-3 py-1 text-center">
               <span className="text-[11px] text-info font-semibold">
                 Catching up to live...
               </span>
             </div>
           )}
-
-          {/* Error banner */}
           {error && status !== 'error' && (
-            <div className="bg-danger/10 border-b border-danger/20 px-3 py-1.5 flex items-center justify-between">
+            <div className="bg-danger/10 border-b border-danger/20 px-3 py-1 flex items-center justify-between">
               <span className="text-[11px] text-danger font-medium">{error}</span>
-              <button
-                onClick={reconnect}
-                className="text-[10px] text-danger font-bold underline"
-              >
+              <button onClick={reconnect} className="text-[10px] text-danger font-bold underline">
                 Retry
               </button>
             </div>
@@ -191,64 +191,40 @@ export function GameViewer({ gameId }: GameViewerProps) {
           />
         </div>
 
-        {/* Play feed (takes remaining space minus scorebug) */}
-        <div className="flex-1 min-h-0 pb-[72px]">
+        {/* Play feed fills remaining space */}
+        <div className="flex-1 min-h-0">
           <PlayFeed events={events} isLive={isLive} />
         </div>
-
-        {/* Scorebug fixed at bottom */}
-        <ScoreBug
-          gameState={gameState}
-          status={status === 'game_over' ? 'game_over' : 'live'}
-        />
       </div>
 
       {/* ── Desktop Layout ── */}
       <div className="hidden lg:flex lg:flex-col lg:h-dvh">
-        {/* Catchup / Error banners */}
+        {/* Scoreboard at top (replaces old header) */}
+        <ScoreBug
+          gameState={gameState}
+          status={status === 'game_over' ? 'game_over' : 'live'}
+        />
+
+        {/* Banners */}
         {isCatchup && (
-          <div className="bg-info/10 border-b border-info/20 px-4 py-1.5 text-center flex-shrink-0">
+          <div className="bg-info/10 border-b border-info/20 px-4 py-1 text-center flex-shrink-0">
             <span className="text-xs text-info font-semibold">
               Catching up to live broadcast...
             </span>
           </div>
         )}
         {error && status !== 'error' && (
-          <div className="bg-danger/10 border-b border-danger/20 px-4 py-1.5 flex items-center justify-center gap-3 flex-shrink-0">
+          <div className="bg-danger/10 border-b border-danger/20 px-4 py-1 flex items-center justify-center gap-3 flex-shrink-0">
             <span className="text-xs text-danger font-medium">{error}</span>
-            <button
-              onClick={reconnect}
-              className="text-xs text-danger font-bold underline"
-            >
+            <button onClick={reconnect} className="text-xs text-danger font-bold underline">
               Retry
             </button>
           </div>
         )}
 
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3 border-b border-border flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <h1 className="text-sm font-bold text-text-primary tracking-wide">
-              {gameState.awayTeam.name}
-              <span className="text-text-muted mx-2">at</span>
-              {gameState.homeTeam.name}
-            </h1>
-            {isLive && (
-              <Badge variant="live" size="sm" pulse>
-                LIVE
-              </Badge>
-            )}
-            {isCatchup && (
-              <Badge variant="upcoming" size="sm">
-                CATCHING UP
-              </Badge>
-            )}
-          </div>
-        </div>
-
         {/* Main content grid */}
         <div className="flex-1 min-h-0 grid grid-cols-3 gap-0">
-          {/* Left column: field + momentum + commentary context */}
+          {/* Left column: field + momentum + narrative + play feed */}
           <div className="col-span-2 flex flex-col border-r border-border">
             <div className="flex-shrink-0">
               <FieldVisual
@@ -279,13 +255,13 @@ export function GameViewer({ gameId }: GameViewerProps) {
             </div>
 
             {/* Play feed fills remaining space */}
-            <div className="flex-1 min-h-0 pb-[72px]">
+            <div className="flex-1 min-h-0">
               <PlayFeed events={events} isLive={isLive} />
             </div>
           </div>
 
           {/* Right column: box score */}
-          <div className="col-span-1 overflow-y-auto pb-[72px]">
+          <div className="col-span-1 overflow-y-auto">
             <BoxScore
               boxScore={activeBoxScore}
               homeTeam={gameState.homeTeam}
@@ -293,12 +269,6 @@ export function GameViewer({ gameId }: GameViewerProps) {
             />
           </div>
         </div>
-
-        {/* Scorebug */}
-        <ScoreBug
-          gameState={gameState}
-          status={status === 'game_over' ? 'game_over' : 'live'}
-        />
       </div>
     </div>
   );

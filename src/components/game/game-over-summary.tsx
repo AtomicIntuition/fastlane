@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import type {
   Team,
   BoxScore as BoxScoreType,
@@ -221,6 +222,22 @@ export function GameOverSummary({
           )}
         </div>
       )}
+
+      {/* Navigation */}
+      <div className="w-full flex gap-3">
+        <Link
+          href="/"
+          className="flex-1 glass-card rounded-xl py-3 text-center text-sm font-bold text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          Home
+        </Link>
+        <Link
+          href="/schedule"
+          className="flex-1 glass-card rounded-xl py-3 text-center text-sm font-bold text-gold hover:bg-surface-hover transition-colors"
+        >
+          View Schedule
+        </Link>
+      </div>
     </div>
   );
 }
