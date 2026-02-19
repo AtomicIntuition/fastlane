@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import Link from 'next/link';
 import type { ScheduledGame } from '@/lib/simulation/types';
+import { TeamLogo } from '@/components/team/team-logo';
 
 interface ScoreTickerProps {
   games: ScheduledGame[];
@@ -52,9 +53,11 @@ function TickerGame({
       {/* Away team */}
       <div className="flex items-center gap-1.5">
         {game.awayTeam && (
-          <span
-            className="w-1 h-3 rounded-sm shrink-0"
-            style={{ backgroundColor: game.awayTeam.primaryColor }}
+          <TeamLogo
+            abbreviation={game.awayTeam.abbreviation}
+            teamName={game.awayTeam.name}
+            size={14}
+            className="w-3.5 h-3.5 object-contain shrink-0"
           />
         )}
         <span className="text-xs font-semibold text-text-secondary whitespace-nowrap">
@@ -78,9 +81,11 @@ function TickerGame({
       {/* Home team */}
       <div className="flex items-center gap-1.5">
         {game.homeTeam && (
-          <span
-            className="w-1 h-3 rounded-sm shrink-0"
-            style={{ backgroundColor: game.homeTeam.primaryColor }}
+          <TeamLogo
+            abbreviation={game.homeTeam.abbreviation}
+            teamName={game.homeTeam.name}
+            size={14}
+            className="w-3.5 h-3.5 object-contain shrink-0"
           />
         )}
         <span className="text-xs font-semibold text-text-secondary whitespace-nowrap">

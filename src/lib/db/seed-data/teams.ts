@@ -54,7 +54,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'New England Patriots',
     abbreviation: 'NE',
-    city: 'Foxborough',
+    city: 'New England',
     mascot: 'Patriots',
     conference: 'AFC',
     division: 'East',
@@ -68,7 +68,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'New York Jets',
     abbreviation: 'NYJ',
-    city: 'East Rutherford',
+    city: 'New York',
     mascot: 'Jets',
     conference: 'AFC',
     division: 'East',
@@ -188,7 +188,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'Tennessee Titans',
     abbreviation: 'TEN',
-    city: 'Nashville',
+    city: 'Tennessee',
     mascot: 'Titans',
     conference: 'AFC',
     division: 'South',
@@ -266,7 +266,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'Dallas Cowboys',
     abbreviation: 'DAL',
-    city: 'Arlington',
+    city: 'Dallas',
     mascot: 'Cowboys',
     conference: 'NFC',
     division: 'East',
@@ -280,7 +280,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'New York Giants',
     abbreviation: 'NYG',
-    city: 'East Rutherford',
+    city: 'New York',
     mascot: 'Giants',
     conference: 'NFC',
     division: 'East',
@@ -308,7 +308,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'Washington Commanders',
     abbreviation: 'WAS',
-    city: 'Landover',
+    city: 'Washington',
     mascot: 'Commanders',
     conference: 'NFC',
     division: 'East',
@@ -368,7 +368,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'Minnesota Vikings',
     abbreviation: 'MIN',
-    city: 'Minneapolis',
+    city: 'Minnesota',
     mascot: 'Vikings',
     conference: 'NFC',
     division: 'North',
@@ -400,7 +400,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'Carolina Panthers',
     abbreviation: 'CAR',
-    city: 'Charlotte',
+    city: 'Carolina',
     mascot: 'Panthers',
     conference: 'NFC',
     division: 'South',
@@ -446,7 +446,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'Arizona Cardinals',
     abbreviation: 'ARI',
-    city: 'Glendale',
+    city: 'Arizona',
     mascot: 'Cardinals',
     conference: 'NFC',
     division: 'West',
@@ -474,7 +474,7 @@ export const teamsSeedData: TeamSeedData[] = [
   {
     name: 'San Francisco 49ers',
     abbreviation: 'SF',
-    city: 'Santa Clara',
+    city: 'San Francisco',
     mascot: '49ers',
     conference: 'NFC',
     division: 'West',

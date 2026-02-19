@@ -9,7 +9,10 @@ import {
   gameEvents,
   standings,
 } from '@/lib/db/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, asc } from 'drizzle-orm';
+import { generateSeasonSchedule } from '@/lib/scheduling/schedule-generator';
+import { calculatePlayoffSeeds } from '@/lib/scheduling/playoff-manager';
+import type { Team, DivisionStandings, TeamStanding } from '@/lib/simulation/types';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // 5 minute timeout for simulation
@@ -158,16 +161,32 @@ async function determineNextAction(): Promise<SimAction> {
   );
 
   if (activeGame) {
-    // Check if broadcasting game has been going too long (stuck)
     if (activeGame.status === 'broadcasting' && activeGame.broadcastStartedAt) {
       const broadcastDuration = Date.now() - new Date(activeGame.broadcastStartedAt).getTime();
-      const MAX_BROADCAST_DURATION = 20 * 60 * 1000; // 20 minutes max
-      if (broadcastDuration > MAX_BROADCAST_DURATION) {
-        // Force complete this game -- it's stuck
+      const MIN_BROADCAST = process.env.NODE_ENV === 'production'
+        ? 5 * 60 * 1000   // 5 minutes in production
+        : 30 * 1000;      // 30 seconds in dev
+      if (broadcastDuration >= MIN_BROADCAST) {
+        // Broadcast duration met — complete the game and update standings
         await db
           .update(games)
           .set({ status: 'completed', completedAt: new Date() })
           .where(eq(games.id, activeGame.id));
+
+        // Update standings now that the game is officially complete
+        const [ht, at] = await Promise.all([
+          db.select().from(teams).where(eq(teams.id, activeGame.homeTeamId)).limit(1),
+          db.select().from(teams).where(eq(teams.id, activeGame.awayTeamId)).limit(1),
+        ]);
+        if (ht[0] && at[0]) {
+          await updateStandings(
+            season.id,
+            ht[0],
+            at[0],
+            activeGame.homeScore ?? 0,
+            activeGame.awayScore ?? 0
+          );
+        }
         // Fall through to find next action
       } else {
         return { type: 'idle', message: 'Game currently broadcasting' };
@@ -287,33 +306,62 @@ async function handleCreateSeason() {
     };
   }
 
-  // We need to generate the schedule and create game records.
-  // For now, create placeholder games for week 1 based on team pairings.
-  // The full schedule generation happens via the schedule-generator module.
-  // Here we create a simple round-robin for week 1 as a starting point.
+  // Map DB teams to the Team type expected by schedule-generator
+  const typedTeams: Team[] = allTeams.map((t) => ({
+    id: t.id,
+    name: t.name,
+    abbreviation: t.abbreviation,
+    city: t.city,
+    mascot: t.mascot,
+    conference: t.conference,
+    division: t.division,
+    primaryColor: t.primaryColor,
+    secondaryColor: t.secondaryColor,
+    offenseRating: t.offenseRating,
+    defenseRating: t.defenseRating,
+    specialTeamsRating: t.specialTeamsRating,
+    playStyle: t.playStyle,
+  }));
 
-  // Create 16 games for week 1 (32 teams / 2 per game)
-  const shuffledTeams = [...allTeams].sort(() => Math.random() - 0.5);
-  const week1Games = [];
+  // Generate proper 18-week NFL schedule using the schedule generator
+  // This creates all regular season matchups with divisional, cross-division,
+  // inter-conference games, and bye weeks — just like the real NFL.
+  const weeklySchedule = generateSeasonSchedule(typedTeams, seed);
 
-  for (let i = 0; i < shuffledTeams.length; i += 2) {
-    if (i + 1 < shuffledTeams.length) {
-      week1Games.push({
-        seasonId,
-        week: 1,
-        gameType: 'regular' as const,
-        homeTeamId: shuffledTeams[i].id,
-        awayTeamId: shuffledTeams[i + 1].id,
-        homeScore: 0,
-        awayScore: 0,
-        status: 'scheduled' as const,
-        isFeatured: i === 0, // First game is featured
-      });
-    }
+  // Insert all regular season games into the database
+  let totalGamesCreated = 0;
+  for (let weekIdx = 0; weekIdx < weeklySchedule.length; weekIdx++) {
+    const weekGames = weeklySchedule[weekIdx];
+    if (weekGames.length === 0) continue;
+
+    const gameValues = weekGames.map((g) => ({
+      seasonId,
+      week: g.week,
+      gameType: 'regular' as const,
+      homeTeamId: g.homeTeamId,
+      awayTeamId: g.awayTeamId,
+      homeScore: 0,
+      awayScore: 0,
+      status: 'scheduled' as const,
+      isFeatured: false,
+    }));
+
+    await db.insert(games).values(gameValues);
+    totalGamesCreated += gameValues.length;
   }
 
+  // Mark one game in week 1 as featured (pick first game for now)
+  const week1Games = await db
+    .select()
+    .from(games)
+    .where(and(eq(games.seasonId, seasonId), eq(games.week, 1)))
+    .limit(1);
+
   if (week1Games.length > 0) {
-    await db.insert(games).values(week1Games);
+    await db
+      .update(games)
+      .set({ isFeatured: true })
+      .where(eq(games.id, week1Games[0].id));
   }
 
   // Initialize standings for all teams
@@ -337,8 +385,8 @@ async function handleCreateSeason() {
   return {
     seasonId,
     seasonNumber: nextSeasonNumber,
-    gamesCreated: week1Games.length,
-    message: `Season ${nextSeasonNumber} created with ${week1Games.length} week 1 games`,
+    gamesCreated: totalGamesCreated,
+    message: `Season ${nextSeasonNumber} created with full 18-week schedule (${totalGamesCreated} games)`,
   };
 }
 
@@ -497,15 +545,17 @@ async function handleCompleteWeek(seasonId: string, week: number) {
     if (bg.broadcastStartedAt) {
       const elapsed =
         Date.now() - new Date(bg.broadcastStartedAt).getTime();
-      const MIN_BROADCAST = 5 * 60 * 1000; // 5 minutes minimum
+      const MIN_BROADCAST_CW = process.env.NODE_ENV === 'production'
+        ? 5 * 60 * 1000   // 5 minutes in production
+        : 30 * 1000;      // 30 seconds in dev
 
-      if (elapsed >= MIN_BROADCAST) {
+      if (elapsed >= MIN_BROADCAST_CW) {
         await db
           .update(games)
           .set({ status: 'completed', completedAt: new Date() })
           .where(eq(games.id, bg.id));
 
-        // Update standings for this game too
+        // Update standings now that the game is officially complete
         const [ht, at] = await Promise.all([
           db.select().from(teams).where(eq(teams.id, bg.homeTeamId)).limit(1),
           db.select().from(teams).where(eq(teams.id, bg.awayTeamId)).limit(1),
@@ -543,108 +593,112 @@ async function handleAdvanceWeek(seasonId: string) {
   }
 
   const season = seasonRows[0];
-  const nextWeek = season.currentWeek + 1;
 
-  // Check for season phase transitions
+  // ==================================================================
+  // Regular season -> Playoffs transition (week 18 complete)
+  // ==================================================================
   if (season.status === 'regular_season' && season.currentWeek >= 18) {
-    // Transition to playoffs
     await db
       .update(seasons)
-      .set({
-        status: 'wild_card',
-        currentWeek: 19,
-      })
+      .set({ status: 'wild_card', currentWeek: 19 })
       .where(eq(seasons.id, seasonId));
+
+    // Generate Wild Card games based on standings
+    const gamesCreated = await generateWildCardGames(seasonId);
 
     return {
       previousWeek: season.currentWeek,
       newWeek: 19,
       newStatus: 'wild_card',
-      message: 'Regular season complete. Playoffs begin!',
+      gamesCreated,
+      message: 'Regular season complete. Wild Card games generated from standings!',
     };
   }
 
+  // ==================================================================
+  // Wild Card -> Divisional transition
+  // ==================================================================
   if (season.status === 'wild_card') {
     await db
       .update(seasons)
       .set({ status: 'divisional', currentWeek: 20 })
       .where(eq(seasons.id, seasonId));
 
+    const gamesCreated = await generateDivisionalGames(seasonId);
+
     return {
       previousWeek: 19,
       newWeek: 20,
       newStatus: 'divisional',
-      message: 'Wild Card complete. Divisional round begins!',
+      gamesCreated,
+      message: 'Wild Card complete. Divisional matchups set!',
     };
   }
 
+  // ==================================================================
+  // Divisional -> Conference Championship transition
+  // ==================================================================
   if (season.status === 'divisional') {
     await db
       .update(seasons)
       .set({ status: 'conference_championship', currentWeek: 21 })
       .where(eq(seasons.id, seasonId));
 
+    const gamesCreated = await generateConferenceChampionshipGames(seasonId);
+
     return {
       previousWeek: 20,
       newWeek: 21,
       newStatus: 'conference_championship',
-      message: 'Divisional round complete. Conference Championships!',
+      gamesCreated,
+      message: 'Divisional round complete. Conference Championships set!',
     };
   }
 
+  // ==================================================================
+  // Conference Championship -> Super Bowl transition
+  // ==================================================================
   if (season.status === 'conference_championship') {
     await db
       .update(seasons)
       .set({ status: 'super_bowl', currentWeek: 22 })
       .where(eq(seasons.id, seasonId));
 
+    const gamesCreated = await generateSuperBowlGame(seasonId);
+
     return {
       previousWeek: 21,
       newWeek: 22,
       newStatus: 'super_bowl',
-      message: 'Conference Championships complete. Super Bowl time!',
+      gamesCreated,
+      message: 'Conference Championships complete. Super Bowl is set!',
     };
   }
 
-  // Regular week advance
+  // ==================================================================
+  // Regular season week advance (games already exist from schedule generator)
+  // ==================================================================
+  const nextWeek = season.currentWeek + 1;
   await db
     .update(seasons)
     .set({ currentWeek: nextWeek })
     .where(eq(seasons.id, seasonId));
 
-  // Create games for the next week if they don't exist
-  const existingNextWeekGames = await db
+  // Pick a featured game for the next week if not already set
+  const nextWeekGames = await db
     .select()
     .from(games)
     .where(
       and(eq(games.seasonId, seasonId), eq(games.week, nextWeek))
     );
 
-  if (existingNextWeekGames.length === 0) {
-    // Generate games for the next week
-    const allTeams = await db.select().from(teams);
-    const shuffledTeams = [...allTeams].sort(() => Math.random() - 0.5);
-    const nextWeekGames = [];
-
-    for (let i = 0; i < shuffledTeams.length; i += 2) {
-      if (i + 1 < shuffledTeams.length) {
-        nextWeekGames.push({
-          seasonId,
-          week: nextWeek,
-          gameType: 'regular' as const,
-          homeTeamId: shuffledTeams[i].id,
-          awayTeamId: shuffledTeams[i + 1].id,
-          homeScore: 0,
-          awayScore: 0,
-          status: 'scheduled' as const,
-          isFeatured: i === 0,
-        });
-      }
-    }
-
-    if (nextWeekGames.length > 0) {
-      await db.insert(games).values(nextWeekGames);
-    }
+  const hasFeatured = nextWeekGames.some((g) => g.isFeatured);
+  if (!hasFeatured && nextWeekGames.length > 0) {
+    // Pick the featured game — for now pick the first, later use appeal scoring
+    await db
+      .update(games)
+      .set({ isFeatured: true })
+      .where(eq(games.id, nextWeekGames[0].id));
   }
 
   return {
@@ -652,6 +706,427 @@ async function handleAdvanceWeek(seasonId: string) {
     newWeek: nextWeek,
     message: `Advanced to week ${nextWeek}`,
   };
+}
+
+// ============================================================
+// Playoff game generators — create games dynamically from standings
+// ============================================================
+
+/** Helper: Build division standings from DB for playoff seeding */
+async function buildDivisionStandings(seasonId: string): Promise<DivisionStandings[]> {
+  const allTeams = await db.select().from(teams);
+  const teamMap = new Map(allTeams.map((t) => [t.id, t]));
+
+  const standingRows = await db
+    .select()
+    .from(standings)
+    .where(eq(standings.seasonId, seasonId));
+
+  const divisionMap: Record<string, Record<string, TeamStanding[]>> = {};
+
+  for (const s of standingRows) {
+    const team = teamMap.get(s.teamId);
+    if (!team) continue;
+    const conf = team.conference;
+    const div = team.division;
+    if (!divisionMap[conf]) divisionMap[conf] = {};
+    if (!divisionMap[conf][div]) divisionMap[conf][div] = [];
+    divisionMap[conf][div].push({
+      teamId: s.teamId,
+      team: {
+        id: team.id,
+        name: team.name,
+        abbreviation: team.abbreviation,
+        city: team.city,
+        mascot: team.mascot,
+        conference: team.conference,
+        division: team.division,
+        primaryColor: team.primaryColor,
+        secondaryColor: team.secondaryColor,
+        offenseRating: team.offenseRating,
+        defenseRating: team.defenseRating,
+        specialTeamsRating: team.specialTeamsRating,
+        playStyle: team.playStyle,
+      },
+      wins: s.wins ?? 0,
+      losses: s.losses ?? 0,
+      ties: s.ties ?? 0,
+      divisionWins: s.divisionWins ?? 0,
+      divisionLosses: s.divisionLosses ?? 0,
+      conferenceWins: s.conferenceWins ?? 0,
+      conferenceLosses: s.conferenceLosses ?? 0,
+      pointsFor: s.pointsFor ?? 0,
+      pointsAgainst: s.pointsAgainst ?? 0,
+      streak: s.streak ?? 'W0',
+      clinched: null,
+      playoffSeed: null,
+    });
+  }
+
+  const result: DivisionStandings[] = [];
+  for (const conf of ['AFC', 'NFC'] as const) {
+    for (const div of ['North', 'South', 'East', 'West'] as const) {
+      result.push({
+        conference: conf,
+        division: div,
+        teams: divisionMap[conf]?.[div] ?? [],
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Generate Wild Card games from playoff seedings.
+ * NFL format: #2 vs #7, #3 vs #6, #4 vs #5 in each conference.
+ * #1 seed gets a first-round bye.
+ */
+async function generateWildCardGames(seasonId: string): Promise<number> {
+  const divStandings = await buildDivisionStandings(seasonId);
+  const seeds = calculatePlayoffSeeds(divStandings);
+
+  // Update playoff seeds in the standings table
+  for (const conf of [seeds.afc, seeds.nfc]) {
+    for (const seeded of conf) {
+      if (seeded.playoffSeed != null) {
+        await db
+          .update(standings)
+          .set({
+            playoffSeed: seeded.playoffSeed,
+            clinched: seeded.clinched ?? null,
+          })
+          .where(
+            and(
+              eq(standings.seasonId, seasonId),
+              eq(standings.teamId, seeded.teamId)
+            )
+          );
+      }
+    }
+  }
+
+  // Create the 6 Wild Card games (3 per conference)
+  const wcGames: Array<{
+    seasonId: string;
+    week: number;
+    gameType: 'wild_card';
+    homeTeamId: string;
+    awayTeamId: string;
+    homeScore: number;
+    awayScore: number;
+    status: 'scheduled';
+    isFeatured: boolean;
+  }> = [];
+
+  for (const [confName, confSeeds] of [['AFC', seeds.afc], ['NFC', seeds.nfc]] as const) {
+    // #2 vs #7 (higher seed hosts)
+    wcGames.push({
+      seasonId,
+      week: 19,
+      gameType: 'wild_card',
+      homeTeamId: confSeeds[1].teamId, // #2 seed
+      awayTeamId: confSeeds[6].teamId, // #7 seed
+      homeScore: 0,
+      awayScore: 0,
+      status: 'scheduled',
+      isFeatured: false,
+    });
+    // #3 vs #6
+    wcGames.push({
+      seasonId,
+      week: 19,
+      gameType: 'wild_card',
+      homeTeamId: confSeeds[2].teamId, // #3 seed
+      awayTeamId: confSeeds[5].teamId, // #6 seed
+      homeScore: 0,
+      awayScore: 0,
+      status: 'scheduled',
+      isFeatured: false,
+    });
+    // #4 vs #5
+    wcGames.push({
+      seasonId,
+      week: 19,
+      gameType: 'wild_card',
+      homeTeamId: confSeeds[3].teamId, // #4 seed
+      awayTeamId: confSeeds[4].teamId, // #5 seed
+      homeScore: 0,
+      awayScore: 0,
+      status: 'scheduled',
+      isFeatured: false,
+    });
+  }
+
+  if (wcGames.length > 0) {
+    await db.insert(games).values(wcGames);
+    // Mark first game as featured
+    const inserted = await db
+      .select()
+      .from(games)
+      .where(and(eq(games.seasonId, seasonId), eq(games.week, 19)))
+      .limit(1);
+    if (inserted.length > 0) {
+      await db.update(games).set({ isFeatured: true }).where(eq(games.id, inserted[0].id));
+    }
+  }
+
+  return wcGames.length;
+}
+
+/**
+ * Generate Divisional Round games.
+ * #1 seed (bye) plays the lowest remaining seed.
+ * Other two WC winners play each other. Higher seed hosts.
+ */
+async function generateDivisionalGames(seasonId: string): Promise<number> {
+  // Get the Wild Card game results
+  const wcGames = await db
+    .select()
+    .from(games)
+    .where(
+      and(
+        eq(games.seasonId, seasonId),
+        eq(games.week, 19),
+        eq(games.status, 'completed')
+      )
+    );
+
+  const allTeams = await db.select().from(teams);
+  const teamMap = new Map(allTeams.map((t) => [t.id, t]));
+
+  // Get playoff seeds from standings
+  const standingRows = await db
+    .select()
+    .from(standings)
+    .where(eq(standings.seasonId, seasonId));
+
+  const divGames: Array<{
+    seasonId: string;
+    week: number;
+    gameType: 'divisional';
+    homeTeamId: string;
+    awayTeamId: string;
+    homeScore: number;
+    awayScore: number;
+    status: 'scheduled';
+    isFeatured: boolean;
+  }> = [];
+
+  for (const conf of ['AFC', 'NFC'] as const) {
+    // Find #1 seed (had bye)
+    const oneSeed = standingRows.find((s) => {
+      const team = teamMap.get(s.teamId);
+      return team?.conference === conf && s.playoffSeed === 1;
+    });
+
+    if (!oneSeed) continue;
+
+    // Find WC winners for this conference
+    const confWcGames = wcGames.filter((g) => {
+      const homeTeam = teamMap.get(g.homeTeamId);
+      return homeTeam?.conference === conf;
+    });
+
+    const wcWinners: Array<{ teamId: string; seed: number }> = [];
+    for (const g of confWcGames) {
+      if (g.homeScore !== null && g.awayScore !== null) {
+        const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
+        const winnerStanding = standingRows.find((s) => s.teamId === winnerId);
+        wcWinners.push({
+          teamId: winnerId,
+          seed: winnerStanding?.playoffSeed ?? 99,
+        });
+      }
+    }
+
+    if (wcWinners.length !== 3) continue;
+
+    // Sort by seed (ascending = best seed first)
+    wcWinners.sort((a, b) => a.seed - b.seed);
+
+    // #1 seed vs lowest remaining seed (highest seed number = worst record)
+    const lowestSeed = wcWinners[wcWinners.length - 1];
+    // Other two WC winners play each other
+    const [higherWinner, lowerWinner] = [wcWinners[0], wcWinners[1]];
+
+    divGames.push({
+      seasonId,
+      week: 20,
+      gameType: 'divisional',
+      homeTeamId: oneSeed.teamId,         // #1 seed hosts
+      awayTeamId: lowestSeed.teamId,
+      homeScore: 0,
+      awayScore: 0,
+      status: 'scheduled',
+      isFeatured: false,
+    });
+
+    divGames.push({
+      seasonId,
+      week: 20,
+      gameType: 'divisional',
+      homeTeamId: higherWinner.teamId,    // Higher seed hosts
+      awayTeamId: lowerWinner.teamId,
+      homeScore: 0,
+      awayScore: 0,
+      status: 'scheduled',
+      isFeatured: false,
+    });
+  }
+
+  if (divGames.length > 0) {
+    await db.insert(games).values(divGames);
+    const inserted = await db
+      .select()
+      .from(games)
+      .where(and(eq(games.seasonId, seasonId), eq(games.week, 20)))
+      .limit(1);
+    if (inserted.length > 0) {
+      await db.update(games).set({ isFeatured: true }).where(eq(games.id, inserted[0].id));
+    }
+  }
+
+  return divGames.length;
+}
+
+/**
+ * Generate Conference Championship games.
+ * The two Divisional Round winners in each conference play each other.
+ * Higher original seed hosts.
+ */
+async function generateConferenceChampionshipGames(seasonId: string): Promise<number> {
+  const divGames = await db
+    .select()
+    .from(games)
+    .where(
+      and(
+        eq(games.seasonId, seasonId),
+        eq(games.week, 20),
+        eq(games.status, 'completed')
+      )
+    );
+
+  const allTeams = await db.select().from(teams);
+  const teamMap = new Map(allTeams.map((t) => [t.id, t]));
+
+  const standingRows = await db
+    .select()
+    .from(standings)
+    .where(eq(standings.seasonId, seasonId));
+
+  const ccGames: Array<{
+    seasonId: string;
+    week: number;
+    gameType: 'conference_championship';
+    homeTeamId: string;
+    awayTeamId: string;
+    homeScore: number;
+    awayScore: number;
+    status: 'scheduled';
+    isFeatured: boolean;
+  }> = [];
+
+  for (const conf of ['AFC', 'NFC'] as const) {
+    const confDivGames = divGames.filter((g) => {
+      const homeTeam = teamMap.get(g.homeTeamId);
+      return homeTeam?.conference === conf;
+    });
+
+    const winners: Array<{ teamId: string; seed: number }> = [];
+    for (const g of confDivGames) {
+      if (g.homeScore !== null && g.awayScore !== null) {
+        const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
+        const winnerStanding = standingRows.find((s) => s.teamId === winnerId);
+        winners.push({
+          teamId: winnerId,
+          seed: winnerStanding?.playoffSeed ?? 99,
+        });
+      }
+    }
+
+    if (winners.length !== 2) continue;
+
+    // Higher seed (lower number) hosts
+    winners.sort((a, b) => a.seed - b.seed);
+
+    ccGames.push({
+      seasonId,
+      week: 21,
+      gameType: 'conference_championship',
+      homeTeamId: winners[0].teamId,
+      awayTeamId: winners[1].teamId,
+      homeScore: 0,
+      awayScore: 0,
+      status: 'scheduled',
+      isFeatured: false,
+    });
+  }
+
+  if (ccGames.length > 0) {
+    await db.insert(games).values(ccGames);
+    const inserted = await db
+      .select()
+      .from(games)
+      .where(and(eq(games.seasonId, seasonId), eq(games.week, 21)))
+      .limit(1);
+    if (inserted.length > 0) {
+      await db.update(games).set({ isFeatured: true }).where(eq(games.id, inserted[0].id));
+    }
+  }
+
+  return ccGames.length;
+}
+
+/**
+ * Generate the Super Bowl game.
+ * AFC champion vs NFC champion at a neutral site.
+ */
+async function generateSuperBowlGame(seasonId: string): Promise<number> {
+  const ccGames = await db
+    .select()
+    .from(games)
+    .where(
+      and(
+        eq(games.seasonId, seasonId),
+        eq(games.week, 21),
+        eq(games.status, 'completed')
+      )
+    );
+
+  const allTeams = await db.select().from(teams);
+  const teamMap = new Map(allTeams.map((t) => [t.id, t]));
+
+  let afcChampId: string | null = null;
+  let nfcChampId: string | null = null;
+
+  for (const g of ccGames) {
+    const winnerId =
+      (g.homeScore ?? 0) > (g.awayScore ?? 0) ? g.homeTeamId : g.awayTeamId;
+    const winnerTeam = teamMap.get(winnerId);
+    if (winnerTeam?.conference === 'AFC') {
+      afcChampId = winnerId;
+    } else if (winnerTeam?.conference === 'NFC') {
+      nfcChampId = winnerId;
+    }
+  }
+
+  if (!afcChampId || !nfcChampId) {
+    return 0;
+  }
+
+  await db.insert(games).values({
+    seasonId,
+    week: 22,
+    gameType: 'super_bowl',
+    homeTeamId: afcChampId,   // AFC is traditionally "home" team
+    awayTeamId: nfcChampId,
+    homeScore: 0,
+    awayScore: 0,
+    status: 'scheduled',
+    isFeatured: true,         // Super Bowl is always featured
+  });
+
+  return 1;
 }
 
 async function handleSeasonComplete(seasonId: string) {

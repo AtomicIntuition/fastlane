@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton, PlayCardSkeleton } from '@/components/ui/skeleton';
 import { formatGameType } from '@/lib/utils/formatting';
 import { ROUTES } from '@/lib/utils/constants';
+import { getTeamLogoUrl } from '@/lib/utils/team-logos';
 
 // ============================================================
 // Types
@@ -170,15 +171,11 @@ export function GameViewer({ gameId, initialData }: GameViewerProps) {
             <div className="py-6">
               <div className="flex items-center justify-center gap-6 sm:gap-12">
                 <div className="text-center">
-                  <div
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center text-xl sm:text-2xl font-black mx-auto mb-1"
-                    style={{
-                      backgroundColor: `${initialData.awayTeam?.primaryColor ?? '#666'}20`,
-                      color: initialData.awayTeam?.primaryColor ?? '#666',
-                    }}
-                  >
-                    {initialData.awayTeam?.abbreviation ?? '???'}
-                  </div>
+                  <img
+                    src={getTeamLogoUrl(initialData.awayTeam?.abbreviation ?? '???')}
+                    alt={initialData.awayTeam?.mascot ?? 'Away'}
+                    className="w-14 h-14 sm:w-16 sm:h-16 object-contain mx-auto mb-1 drop-shadow-lg"
+                  />
                   <p className="text-xs text-text-muted">
                     {initialData.awayTeam?.mascot ?? ''}
                   </p>
@@ -197,15 +194,11 @@ export function GameViewer({ gameId, initialData }: GameViewerProps) {
                 </div>
 
                 <div className="text-center">
-                  <div
-                    className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center text-xl sm:text-2xl font-black mx-auto mb-1"
-                    style={{
-                      backgroundColor: `${initialData.homeTeam?.primaryColor ?? '#666'}20`,
-                      color: initialData.homeTeam?.primaryColor ?? '#666',
-                    }}
-                  >
-                    {initialData.homeTeam?.abbreviation ?? '???'}
-                  </div>
+                  <img
+                    src={getTeamLogoUrl(initialData.homeTeam?.abbreviation ?? '???')}
+                    alt={initialData.homeTeam?.mascot ?? 'Home'}
+                    className="w-14 h-14 sm:w-16 sm:h-16 object-contain mx-auto mb-1 drop-shadow-lg"
+                  />
                   <p className="text-xs text-text-muted">
                     {initialData.homeTeam?.mascot ?? ''}
                   </p>
@@ -357,15 +350,11 @@ function TeamBadge({ team }: { team: TeamInfo | null }) {
 
   return (
     <div className="text-center">
-      <div
-        className="w-20 h-20 rounded-2xl flex items-center justify-center text-2xl font-black mx-auto mb-2"
-        style={{
-          backgroundColor: `${team.primaryColor}20`,
-          color: team.primaryColor,
-        }}
-      >
-        {team.abbreviation}
-      </div>
+      <img
+        src={getTeamLogoUrl(team.abbreviation)}
+        alt={team.mascot}
+        className="w-20 h-20 object-contain mx-auto mb-2 drop-shadow-lg"
+      />
       <p className="text-xs text-text-secondary">{team.city}</p>
       <p className="text-sm font-bold">{team.mascot}</p>
     </div>

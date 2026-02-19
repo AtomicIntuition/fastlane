@@ -52,7 +52,7 @@ export async function generateMetadata({
   let description: string;
 
   if (isLive) {
-    title = `LIVE: ${awayName} ${game.awayScore ?? 0} @ ${homeName} ${game.homeScore ?? 0}`;
+    title = `LIVE: ${awayName} @ ${homeName}`;
     description = `Watch ${awayTeam?.name ?? 'Away'} at ${homeTeam?.name ?? 'Home'} live on GridIron Live. Real-time play-by-play simulation.`;
   } else if (isCompleted) {
     title = `${awayName} ${game.awayScore ?? 0}, ${homeName} ${game.homeScore ?? 0} - Final`;
@@ -131,8 +131,8 @@ export default async function GamePage({ params }: PageProps) {
           secondaryColor: awayTeamRows[0].secondaryColor,
         }
       : null,
-    homeScore: game.homeScore ?? 0,
-    awayScore: game.awayScore ?? 0,
+    homeScore: game.status === 'completed' ? (game.homeScore ?? 0) : 0,
+    awayScore: game.status === 'completed' ? (game.awayScore ?? 0) : 0,
     isFeatured: game.isFeatured,
     broadcastStartedAt: game.broadcastStartedAt?.toISOString() ?? null,
   };

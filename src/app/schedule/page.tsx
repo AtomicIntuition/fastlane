@@ -3,28 +3,14 @@ export const dynamic = 'force-dynamic';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { db } from '@/lib/db';
-import { games, seasons, teams, standings } from '@/lib/db/schema';
+import { games, seasons, teams } from '@/lib/db/schema';
 import { eq, desc, and } from 'drizzle-orm';
 import { Header } from '@/components/layout/header';
 import { Card } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { StandingsTable } from '@/components/schedule/standings-table';
 import { GameCard } from '@/components/schedule/game-card';
-import { WeekSelector } from '@/components/schedule/week-selector';
 import { PlayoffBracketView } from '@/components/schedule/playoff-bracket';
-import {
-  formatRecord,
-  formatWinPct,
-  formatSeasonStatus,
-  formatGameType,
-} from '@/lib/utils/formatting';
-import { ROUTES } from '@/lib/utils/constants';
-import type {
-  DivisionStandings,
-  TeamStanding,
-  PlayoffBracket,
-  ScheduledGame,
-} from '@/lib/simulation/types';
+import { formatSeasonStatus } from '@/lib/utils/formatting';
+import type { ScheduledGame } from '@/lib/simulation/types';
 
 export const metadata: Metadata = {
   title: 'Schedule & Standings',
@@ -37,10 +23,10 @@ export const metadata: Metadata = {
 // ============================================================
 
 interface SchedulePageProps {
-  searchParams: Promise<{ week?: string; view?: string }>;
+  searchParams: Promise<{ week?: string }>;
 }
 
-async function getScheduleData(weekParam?: string, viewParam?: string) {
+async function getScheduleData(weekParam?: string) {
   try {
     // Find latest season
     const seasonRows = await db
@@ -53,7 +39,6 @@ async function getScheduleData(weekParam?: string, viewParam?: string) {
     if (!season) return null;
 
     const targetWeek = weekParam ? parseInt(weekParam, 10) : season.currentWeek;
-    const view = viewParam === 'standings' ? 'standings' : 'schedule';
 
     // Get all teams for hydration
     const allTeams = await db.select().from(teams);
@@ -87,73 +72,6 @@ async function getScheduleData(weekParam?: string, viewParam?: string) {
       return (statusOrder[a.status] ?? 9) - (statusOrder[b.status] ?? 9);
     });
 
-    // Get standings
-    const standingRows = await db
-      .select()
-      .from(standings)
-      .where(eq(standings.seasonId, season.id));
-
-    const hydratedStandings = standingRows.map((s) => ({
-      ...s,
-      team: teamMap.get(s.teamId) ?? undefined,
-    }));
-
-    // Group by conference -> division as DivisionStandings[]
-    const divisionMap: Record<string, Record<string, TeamStanding[]>> = {};
-
-    for (const s of hydratedStandings) {
-      const conf = s.team?.conference ?? 'Unknown';
-      const div = s.team?.division ?? 'Unknown';
-      if (!divisionMap[conf]) divisionMap[conf] = {};
-      if (!divisionMap[conf][div]) divisionMap[conf][div] = [];
-      divisionMap[conf][div].push({
-        teamId: s.teamId,
-        team: s.team
-          ? {
-              id: s.team.id,
-              name: s.team.name,
-              abbreviation: s.team.abbreviation,
-              city: s.team.city,
-              mascot: s.team.mascot,
-              conference: s.team.conference,
-              division: s.team.division,
-              primaryColor: s.team.primaryColor,
-              secondaryColor: s.team.secondaryColor,
-              offenseRating: s.team.offenseRating,
-              defenseRating: s.team.defenseRating,
-              specialTeamsRating: s.team.specialTeamsRating,
-              playStyle: s.team.playStyle,
-            }
-          : undefined,
-        wins: s.wins ?? 0,
-        losses: s.losses ?? 0,
-        ties: s.ties ?? 0,
-        divisionWins: s.divisionWins ?? 0,
-        divisionLosses: s.divisionLosses ?? 0,
-        conferenceWins: s.conferenceWins ?? 0,
-        conferenceLosses: s.conferenceLosses ?? 0,
-        pointsFor: s.pointsFor ?? 0,
-        pointsAgainst: s.pointsAgainst ?? 0,
-        streak: s.streak ?? 'W0',
-        clinched: (s.clinched as TeamStanding['clinched']) ?? null,
-        playoffSeed: s.playoffSeed ?? null,
-      });
-    }
-
-    const divisionStandings: DivisionStandings[] = [];
-    for (const conf of ['AFC', 'NFC'] as const) {
-      for (const div of ['North', 'South', 'East', 'West'] as const) {
-        const divTeams = divisionMap[conf]?.[div] ?? [];
-        if (divTeams.length > 0) {
-          divisionStandings.push({
-            conference: conf,
-            division: div,
-            teams: divTeams,
-          });
-        }
-      }
-    }
-
     // Get all available weeks
     const allGames = await db
       .select({ week: games.week })
@@ -180,9 +98,7 @@ async function getScheduleData(weekParam?: string, viewParam?: string) {
     return {
       season,
       targetWeek,
-      view,
       games: hydratedGames,
-      divisionStandings,
       weeks,
       hasLive,
       isPlayoffs,
@@ -200,8 +116,8 @@ async function getScheduleData(weekParam?: string, viewParam?: string) {
 export default async function SchedulePage({
   searchParams,
 }: SchedulePageProps) {
-  const { week, view } = await searchParams;
-  const data = await getScheduleData(week, view);
+  const { week } = await searchParams;
+  const data = await getScheduleData(week);
 
   if (!data) {
     return (
@@ -223,12 +139,10 @@ export default async function SchedulePage({
     season,
     targetWeek,
     games: weekGames,
-    divisionStandings,
     weeks,
     hasLive,
     isPlayoffs,
   } = data;
-  const activeView = data.view;
 
   // Map hydrated games to ScheduledGame shape for the GameCard component
   const scheduledGames: ScheduledGame[] = weekGames.map((g) => ({
@@ -279,108 +193,74 @@ export default async function SchedulePage({
     completedAt: g.completedAt,
   }));
 
+  // Count stats for the week header
+  const liveCount = scheduledGames.filter(
+    (g) => g.status === 'broadcasting' || g.status === 'simulating'
+  ).length;
+  const finalCount = scheduledGames.filter(
+    (g) => g.status === 'completed'
+  ).length;
+
   return (
     <>
       <Header isLive={hasLive} />
       <main className="min-h-screen bg-midnight max-w-7xl mx-auto px-4 sm:px-6 py-6">
         {/* Page header */}
-        <div className="mb-6">
-          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary mb-1">
-            Season {season.seasonNumber}
-          </h1>
-          <p className="text-text-secondary">
-            {formatSeasonStatus(season.status, season.currentWeek)}
-          </p>
+        <div className="flex items-end justify-between mb-6">
+          <div>
+            <p className="text-xs font-bold text-gold uppercase tracking-[0.2em] mb-1">
+              Season {season.seasonNumber}
+            </p>
+            <h1 className="text-2xl sm:text-3xl font-black text-text-primary tracking-tight">
+              {formatSeasonStatus(season.status, season.currentWeek)}
+            </h1>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-text-muted">
+            {liveCount > 0 && (
+              <span className="flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-live-red opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-live-red" />
+                </span>
+                <span className="font-bold text-live-red">{liveCount} Live</span>
+              </span>
+            )}
+            {finalCount > 0 && (
+              <span className="font-medium">{finalCount} Final</span>
+            )}
+            <span className="font-medium">
+              {scheduledGames.length} Game{scheduledGames.length !== 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
 
-        {/* View tabs */}
-        <div className="flex items-center gap-1 mb-6 border-b border-border">
-          <Link
-            href={`/schedule?week=${targetWeek}&view=schedule`}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
-              activeView === 'schedule'
-                ? 'text-gold'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            Schedule
-            {activeView === 'schedule' && (
-              <span className="absolute bottom-0 left-4 right-4 h-0.5 bg-gold rounded-full" />
-            )}
-          </Link>
-          <Link
-            href={`/schedule?week=${targetWeek}&view=standings`}
-            className={`px-4 py-2.5 text-sm font-medium transition-colors relative ${
-              activeView === 'standings'
-                ? 'text-gold'
-                : 'text-text-secondary hover:text-text-primary'
-            }`}
-          >
-            Standings
-            {activeView === 'standings' && (
-              <span className="absolute bottom-0 left-4 right-4 h-0.5 bg-gold rounded-full" />
-            )}
-          </Link>
-        </div>
+        {/* Week selector */}
+        <ScheduleWeekNav weeks={weeks} targetWeek={targetWeek} />
 
-        {/* Schedule view */}
-        {activeView === 'schedule' && (
-          <>
-            {/* Week selector */}
-            <ScheduleWeekNav
-              weeks={weeks}
-              targetWeek={targetWeek}
+        {/* Playoff bracket (shown when in playoffs) */}
+        {isPlayoffs && (
+          <div className="mb-8">
+            <h2 className="text-lg font-bold text-text-primary mb-4 tracking-wide">
+              Playoff Bracket
+            </h2>
+            <PlayoffBracketView
+              bracket={null}
+              currentRound={season.status}
             />
-
-            {/* Playoff bracket (shown when in playoffs) */}
-            {isPlayoffs && (
-              <div className="mb-8">
-                <h2 className="text-lg font-bold text-text-primary mb-4 tracking-wide">
-                  Playoff Bracket
-                </h2>
-                <PlayoffBracketView
-                  bracket={null}
-                  currentRound={season.status}
-                />
-              </div>
-            )}
-
-            {/* Games grid */}
-            {scheduledGames.length === 0 ? (
-              <Card variant="default" padding="lg" className="text-center">
-                <p className="text-text-secondary">
-                  No games scheduled for this week yet.
-                </p>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {scheduledGames.map((game) => (
-                  <GameCard key={game.id} game={game} />
-                ))}
-              </div>
-            )}
-          </>
+          </div>
         )}
 
-        {/* Standings view */}
-        {activeView === 'standings' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {['AFC', 'NFC'].map((conf) => (
-              <div key={conf}>
-                <h2 className="text-lg font-bold text-text-primary mb-4 tracking-wider">
-                  {conf}
-                </h2>
-                <div className="space-y-4">
-                  {divisionStandings
-                    .filter((ds) => ds.conference === conf)
-                    .map((ds) => (
-                      <StandingsTable
-                        key={`${ds.conference}-${ds.division}`}
-                        standings={ds}
-                      />
-                    ))}
-                </div>
-              </div>
+        {/* Games grid */}
+        {scheduledGames.length === 0 ? (
+          <Card variant="default" padding="lg" className="text-center">
+            <p className="text-text-secondary">
+              No games scheduled for this week yet.
+            </p>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+            {scheduledGames.map((game) => (
+              <GameCard key={game.id} game={game} />
             ))}
           </div>
         )}
@@ -407,7 +287,7 @@ function ScheduleWeekNav({
       {weeks.map((w) => (
         <Link
           key={w}
-          href={`/schedule?week=${w}&view=schedule`}
+          href={`/schedule?week=${w}`}
           className={`flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${
             w === targetWeek
               ? 'bg-gold text-midnight shadow-lg shadow-gold/20'

@@ -9,6 +9,7 @@ import type {
 } from '@/lib/simulation/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { TeamLogo } from '@/components/team/team-logo';
 import { useCountdown } from '@/hooks/use-countdown';
 import { BoxScore } from '@/components/game/box-score';
 import { formatClock } from '@/lib/utils/formatting';
@@ -51,12 +52,12 @@ export function GameOverSummary({
         <div className="flex items-center justify-between">
           {/* Away team */}
           <div className="flex flex-col items-center gap-2 flex-1">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-black text-white"
-              style={{ backgroundColor: awayTeam.primaryColor }}
-            >
-              {awayTeam.abbreviation.charAt(0)}
-            </div>
+            <TeamLogo
+              abbreviation={awayTeam.abbreviation}
+              teamName={awayTeam.name}
+              size={48}
+              className="w-12 h-12 object-contain drop-shadow-lg"
+            />
             <span
               className={`text-sm font-bold tracking-wide ${
                 awayWon ? 'text-text-primary' : 'text-text-muted'
@@ -81,12 +82,12 @@ export function GameOverSummary({
 
           {/* Home team */}
           <div className="flex flex-col items-center gap-2 flex-1">
-            <div
-              className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-black text-white"
-              style={{ backgroundColor: homeTeam.primaryColor }}
-            >
-              {homeTeam.abbreviation.charAt(0)}
-            </div>
+            <TeamLogo
+              abbreviation={homeTeam.abbreviation}
+              teamName={homeTeam.name}
+              size={48}
+              className="w-12 h-12 object-contain drop-shadow-lg"
+            />
             <span
               className={`text-sm font-bold tracking-wide ${
                 homeWon ? 'text-text-primary' : 'text-text-muted'

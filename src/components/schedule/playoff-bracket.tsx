@@ -1,6 +1,7 @@
 'use client';
 
 import type { PlayoffBracket, PlayoffMatchup, PlayoffRound } from '@/lib/simulation/types';
+import { TeamLogo } from '@/components/team/team-logo';
 
 interface PlayoffBracketProps {
   bracket: PlayoffBracket | null;
@@ -53,9 +54,11 @@ function MatchupBox({ matchup, isCurrent, isSuperBowl = false }: MatchupBoxProps
             {matchup.awaySeed}
           </span>
           {matchup.awayTeam && (
-            <span
-              className="w-1.5 h-4 rounded-sm shrink-0"
-              style={{ backgroundColor: matchup.awayTeam.primaryColor }}
+            <TeamLogo
+              abbreviation={matchup.awayTeam.abbreviation}
+              teamName={matchup.awayTeam.name}
+              size={16}
+              className="w-4 h-4 object-contain shrink-0"
             />
           )}
           <span
@@ -97,9 +100,11 @@ function MatchupBox({ matchup, isCurrent, isSuperBowl = false }: MatchupBoxProps
             {matchup.homeSeed}
           </span>
           {matchup.homeTeam && (
-            <span
-              className="w-1.5 h-4 rounded-sm shrink-0"
-              style={{ backgroundColor: matchup.homeTeam.primaryColor }}
+            <TeamLogo
+              abbreviation={matchup.homeTeam.abbreviation}
+              teamName={matchup.homeTeam.name}
+              size={16}
+              className="w-4 h-4 object-contain shrink-0"
             />
           )}
           <span

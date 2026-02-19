@@ -1,6 +1,7 @@
 'use client';
 
 import type { PlayoffMatchup } from '@/lib/simulation/types';
+import { TeamLogo } from '@/components/team/team-logo';
 
 interface SuperBowlBannerProps {
   matchup: PlayoffMatchup | null;
@@ -105,11 +106,11 @@ export function SuperBowlBanner({ matchup, isComplete }: SuperBowlBannerProps) {
               {matchup.awayTeam ? (
                 <div>
                   <div className="flex items-center justify-end gap-2 mb-1">
-                    <span
-                      className="w-3 h-8 sm:w-4 sm:h-10 rounded-sm"
-                      style={{
-                        backgroundColor: matchup.awayTeam.primaryColor,
-                      }}
+                    <TeamLogo
+                      abbreviation={matchup.awayTeam.abbreviation}
+                      teamName={matchup.awayTeam.name}
+                      size={40}
+                      className="w-8 h-10 sm:w-10 sm:h-12 object-contain drop-shadow-lg"
                     />
                     <span
                       className={`
@@ -176,11 +177,11 @@ export function SuperBowlBanner({ matchup, isComplete }: SuperBowlBannerProps) {
                     >
                       {matchup.homeTeam.abbreviation}
                     </span>
-                    <span
-                      className="w-3 h-8 sm:w-4 sm:h-10 rounded-sm"
-                      style={{
-                        backgroundColor: matchup.homeTeam.primaryColor,
-                      }}
+                    <TeamLogo
+                      abbreviation={matchup.homeTeam.abbreviation}
+                      teamName={matchup.homeTeam.name}
+                      size={40}
+                      className="w-8 h-10 sm:w-10 sm:h-12 object-contain drop-shadow-lg"
                     />
                   </div>
                   <p className="text-[10px] sm:text-xs text-text-muted">
@@ -220,17 +221,15 @@ export function SuperBowlBanner({ matchup, isComplete }: SuperBowlBannerProps) {
               Champion
             </p>
             <div className="flex items-center justify-center gap-3">
-              <span
-                className="w-3 h-10 rounded-sm"
-                style={{ backgroundColor: winner.primaryColor }}
+              <TeamLogo
+                abbreviation={winner.abbreviation}
+                teamName={winner.name}
+                size={48}
+                className="w-12 h-12 object-contain drop-shadow-lg"
               />
               <span className="text-2xl sm:text-3xl font-black text-gold-bright tracking-wide">
                 {winner.name}
               </span>
-              <span
-                className="w-3 h-10 rounded-sm"
-                style={{ backgroundColor: winner.secondaryColor }}
-              />
             </div>
             {/* Confetti dots */}
             <div className="flex items-center justify-center gap-1.5 mt-4">

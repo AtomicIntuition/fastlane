@@ -15,6 +15,7 @@ import { games, seasons, teams } from '@/lib/db/schema';
 import { eq, and, or, desc } from 'drizzle-orm';
 import { formatRecord } from '@/lib/utils/formatting';
 import { ROUTES } from '@/lib/utils/constants';
+import { TeamLogo } from '@/components/team/team-logo';
 import type { Team, Player } from '@/lib/simulation/types';
 
 // ============================================================
@@ -307,11 +308,11 @@ export default async function TeamPage({ params }: PageProps) {
                             {isHome ? 'vs' : '@'}
                           </span>
                           {opponent && (
-                            <div
-                              className="w-1 h-4 rounded-full flex-shrink-0"
-                              style={{
-                                backgroundColor: opponent.primaryColor,
-                              }}
+                            <TeamLogo
+                              abbreviation={opponent.abbreviation}
+                              teamName={opponent.name}
+                              size={18}
+                              className="w-[18px] h-[18px] object-contain flex-shrink-0"
                             />
                           )}
                           <span className="text-sm font-bold truncate">

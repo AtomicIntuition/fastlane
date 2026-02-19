@@ -15,14 +15,17 @@
     "type-check": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "db:seed": "tsx scripts/seed.ts",
+    "db:reset-season": "tsx scripts/reset-season.ts",
+    "simulate": "tsx scripts/run-simulation.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.77.0",
     "@clerk/nextjs": "^6.38.0",
-    "@neondatabase/serverless": "^1.0.2",
     "drizzle-orm": "^0.45.1",
     "next": "^16.1.6",
+    "postgres": "^3.4.8",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "stripe": "^20.3.1",
@@ -42,6 +45,7 @@
     "fast-check": "^4.5.3",
     "playwright": "^1.58.2",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }

@@ -1,5 +1,6 @@
 import type { Team } from "@/lib/simulation/types";
 import { formatRecord } from "@/lib/utils/formatting";
+import { TeamLogo } from "@/components/team/team-logo";
 
 interface TeamHeaderProps {
   team: Team;
@@ -40,13 +41,13 @@ export function TeamHeader({
       {/* Content */}
       <div className="relative px-6 py-8 md:px-8 md:py-12">
         <div className="flex items-center gap-4">
-          {/* Team color swatch */}
-          <div
-            className="w-16 h-16 md:w-20 md:h-20 rounded-xl shadow-lg flex items-center justify-center text-2xl md:text-3xl font-bold text-white"
-            style={{ backgroundColor: team.primaryColor }}
-          >
-            {team.abbreviation}
-          </div>
+          {/* Team logo */}
+          <TeamLogo
+            abbreviation={team.abbreviation}
+            teamName={team.name}
+            size={80}
+            className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-lg"
+          />
 
           <div className="flex-1">
             <h1 className="text-2xl md:text-4xl font-bold text-text-primary">

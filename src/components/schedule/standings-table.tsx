@@ -1,6 +1,7 @@
 'use client';
 
 import type { DivisionStandings, TeamStanding } from '@/lib/simulation/types';
+import { TeamLogo } from '@/components/team/team-logo';
 
 interface StandingsTableProps {
   standings: DivisionStandings;
@@ -115,13 +116,12 @@ export function StandingsTable({ standings }: StandingsTableProps) {
                           {team.playoffSeed}
                         </span>
                       )}
-                      {/* Team color dot */}
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{
-                          backgroundColor:
-                            team.team?.primaryColor ?? '#6b7280',
-                        }}
+                      {/* Team logo */}
+                      <TeamLogo
+                        abbreviation={team.team?.abbreviation ?? '???'}
+                        teamName={team.team?.name ?? undefined}
+                        size={24}
+                        className="w-6 h-6 object-contain shrink-0"
                       />
                       {/* Name with clinch prefix */}
                       <span

@@ -14,6 +14,8 @@ import {
   formatGameType,
 } from '@/lib/utils/formatting';
 import { ROUTES } from '@/lib/utils/constants';
+import { LiveScore } from '@/components/game/live-score';
+import { TeamLogo } from '@/components/team/team-logo';
 
 // ============================================================
 // Data fetching
@@ -224,18 +226,34 @@ export default async function HomePage() {
                           className="min-w-[160px] hover:border-gold/30 transition-colors"
                         >
                           <div className="space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold" style={{ color: game.awayTeam?.primaryColor }}>
-                                {game.awayTeam?.abbreviation ?? '???'}
-                              </span>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <TeamLogo
+                                  abbreviation={game.awayTeam?.abbreviation ?? '???'}
+                                  teamName={game.awayTeam?.name ?? undefined}
+                                  size={16}
+                                  className="w-4 h-4 object-contain shrink-0"
+                                />
+                                <span className="text-xs font-bold">
+                                  {game.awayTeam?.abbreviation ?? '???'}
+                                </span>
+                              </div>
                               <span className="font-mono text-sm font-black tabular-nums">
                                 {game.awayScore ?? 0}
                               </span>
                             </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold" style={{ color: game.homeTeam?.primaryColor }}>
-                                {game.homeTeam?.abbreviation ?? '???'}
-                              </span>
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-1.5">
+                                <TeamLogo
+                                  abbreviation={game.homeTeam?.abbreviation ?? '???'}
+                                  teamName={game.homeTeam?.name ?? undefined}
+                                  size={16}
+                                  className="w-4 h-4 object-contain shrink-0"
+                                />
+                                <span className="text-xs font-bold">
+                                  {game.homeTeam?.abbreviation ?? '???'}
+                                </span>
+                              </div>
                               <span className="font-mono text-sm font-black tabular-nums">
                                 {game.homeScore ?? 0}
                               </span>
@@ -282,9 +300,11 @@ export default async function HomePage() {
                     <span className="text-xs font-bold text-text-muted w-5">
                       {idx + 1}
                     </span>
-                    <div
-                      className="w-1.5 h-8 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: s.team?.primaryColor ?? '#666' }}
+                    <TeamLogo
+                      abbreviation={s.team?.abbreviation ?? '???'}
+                      teamName={s.team?.name ?? undefined}
+                      size={36}
+                      className="w-9 h-9 object-contain flex-shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold truncate">
@@ -415,14 +435,13 @@ function LiveGameHero({ game }: { game: GameCardData }) {
         <div className="flex items-center justify-center gap-6 sm:gap-12">
           {/* Away team */}
           <div className="flex flex-col items-center text-center">
-            <div
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl font-black mb-2"
-              style={{
-                backgroundColor: `${game.awayTeam?.primaryColor ?? '#666'}20`,
-                color: game.awayTeam?.primaryColor ?? '#666',
-              }}
-            >
-              {game.awayTeam?.abbreviation ?? '???'}
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mb-2">
+              <TeamLogo
+                abbreviation={game.awayTeam?.abbreviation ?? '???'}
+                teamName={game.awayTeam?.name ?? undefined}
+                size={80}
+                className="w-full h-full object-contain drop-shadow-lg"
+              />
             </div>
             <p className="text-xs sm:text-sm text-text-secondary">
               {game.awayTeam?.city ?? 'Unknown'}
@@ -432,34 +451,18 @@ function LiveGameHero({ game }: { game: GameCardData }) {
             </p>
           </div>
 
-          {/* Score */}
-          <div className="text-center">
-            <div className="flex items-baseline gap-3 sm:gap-5">
-              <span className="font-mono text-4xl sm:text-6xl font-black tabular-nums">
-                {game.awayScore ?? 0}
-              </span>
-              <span className="text-text-muted text-lg sm:text-2xl font-medium">
-                -
-              </span>
-              <span className="font-mono text-4xl sm:text-6xl font-black tabular-nums">
-                {game.homeScore ?? 0}
-              </span>
-            </div>
-            <p className="text-xs text-text-muted mt-2 tracking-wider uppercase">
-              In Progress
-            </p>
-          </div>
+          {/* Live score — streams in real-time from SSE */}
+          <LiveScore gameId={game.id} />
 
           {/* Home team */}
           <div className="flex flex-col items-center text-center">
-            <div
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl font-black mb-2"
-              style={{
-                backgroundColor: `${game.homeTeam?.primaryColor ?? '#666'}20`,
-                color: game.homeTeam?.primaryColor ?? '#666',
-              }}
-            >
-              {game.homeTeam?.abbreviation ?? '???'}
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mb-2">
+              <TeamLogo
+                abbreviation={game.homeTeam?.abbreviation ?? '???'}
+                teamName={game.homeTeam?.name ?? undefined}
+                size={80}
+                className="w-full h-full object-contain drop-shadow-lg"
+              />
             </div>
             <p className="text-xs sm:text-sm text-text-secondary">
               {game.homeTeam?.city ?? 'Unknown'}
@@ -507,14 +510,13 @@ function NextGameHero({ game }: { game: GameCardData }) {
         <div className="flex items-center justify-center gap-6 sm:gap-12">
           {/* Away team */}
           <div className="flex flex-col items-center text-center">
-            <div
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl font-black mb-2"
-              style={{
-                backgroundColor: `${game.awayTeam?.primaryColor ?? '#666'}20`,
-                color: game.awayTeam?.primaryColor ?? '#666',
-              }}
-            >
-              {game.awayTeam?.abbreviation ?? '???'}
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mb-2">
+              <TeamLogo
+                abbreviation={game.awayTeam?.abbreviation ?? '???'}
+                teamName={game.awayTeam?.name ?? undefined}
+                size={80}
+                className="w-full h-full object-contain drop-shadow-lg"
+              />
             </div>
             <p className="text-xs sm:text-sm text-text-secondary">
               {game.awayTeam?.city ?? 'Unknown'}
@@ -534,14 +536,13 @@ function NextGameHero({ game }: { game: GameCardData }) {
 
           {/* Home team */}
           <div className="flex flex-col items-center text-center">
-            <div
-              className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-2xl sm:text-3xl font-black mb-2"
-              style={{
-                backgroundColor: `${game.homeTeam?.primaryColor ?? '#666'}20`,
-                color: game.homeTeam?.primaryColor ?? '#666',
-              }}
-            >
-              {game.homeTeam?.abbreviation ?? '???'}
+            <div className="w-16 h-16 sm:w-20 sm:h-20 mb-2">
+              <TeamLogo
+                abbreviation={game.homeTeam?.abbreviation ?? '???'}
+                teamName={game.homeTeam?.name ?? undefined}
+                size={80}
+                className="w-full h-full object-contain drop-shadow-lg"
+              />
             </div>
             <p className="text-xs sm:text-sm text-text-secondary">
               {game.homeTeam?.city ?? 'Unknown'}

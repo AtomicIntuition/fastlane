@@ -1,6 +1,7 @@
 'use client';
 
 import type { ScheduledGame } from '@/lib/simulation/types';
+import { TeamLogo } from '@/components/team/team-logo';
 
 interface WeeklyRecapProps {
   week: number;
@@ -21,9 +22,11 @@ function GameResult({ game }: { game: ScheduledGame }) {
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 min-w-0">
           {game.awayTeam && (
-            <span
-              className="w-1 h-5 rounded-full shrink-0"
-              style={{ backgroundColor: game.awayTeam.primaryColor }}
+            <TeamLogo
+              abbreviation={game.awayTeam.abbreviation}
+              teamName={game.awayTeam.name}
+              size={18}
+              className="w-[18px] h-[18px] object-contain shrink-0"
             />
           )}
           <span
@@ -49,9 +52,11 @@ function GameResult({ game }: { game: ScheduledGame }) {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           {game.homeTeam && (
-            <span
-              className="w-1 h-5 rounded-full shrink-0"
-              style={{ backgroundColor: game.homeTeam.primaryColor }}
+            <TeamLogo
+              abbreviation={game.homeTeam.abbreviation}
+              teamName={game.homeTeam.name}
+              size={18}
+              className="w-[18px] h-[18px] object-contain shrink-0"
             />
           )}
           <span
@@ -175,9 +180,10 @@ export function WeeklyRecap({ week, results, standingsUpdates }: WeeklyRecapProp
                 key={`${entry.team}-${i}`}
                 className="flex items-center gap-2 shrink-0"
               >
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: entry.color }}
+                <TeamLogo
+                  abbreviation={entry.team}
+                  size={16}
+                  className="w-4 h-4 object-contain shrink-0"
                 />
                 <span className="text-xs font-semibold text-text-secondary">
                   {entry.team}
