@@ -15,20 +15,12 @@ export function SimulationDriver() {
   const isVisibleRef = useRef(true);
 
   useEffect(() => {
-    const cronSecret = process.env.NEXT_PUBLIC_CRON_SECRET;
-    if (!cronSecret) return;
-
     async function tick() {
       // Don't tick if the tab is hidden (save resources)
       if (!isVisibleRef.current) return;
 
       try {
-        await fetch('/api/simulate', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${cronSecret}`,
-          },
-        });
+        await fetch('/api/simulate', { method: 'POST' });
       } catch {
         // Silently ignore — will retry on next interval
       }
