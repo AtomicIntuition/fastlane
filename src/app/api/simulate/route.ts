@@ -32,7 +32,17 @@ export const maxDuration = 300; // 5 minute timeout for simulation
  *   - season_complete: Super Bowl played, finalize season
  *   - idle: Nothing to do right now
  */
+// Vercel Cron sends GET requests with Authorization: Bearer <CRON_SECRET>
+export async function GET(request: NextRequest) {
+  return handleSimulate(request);
+}
+
+// Also support POST for manual triggers
 export async function POST(request: NextRequest) {
+  return handleSimulate(request);
+}
+
+async function handleSimulate(request: NextRequest) {
   // ---- Verify cron secret ----
   const authHeader = request.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
