@@ -13,7 +13,7 @@ export function GameCard({ game }: GameCardProps) {
   const isFinished = status === 'completed';
   const isLive = status === 'broadcasting' || status === 'simulating';
   const isUpcoming = status === 'scheduled';
-  const hasScores = homeScore !== null && awayScore !== null;
+  const hasScores = homeScore !== null && awayScore !== null && isFinished;
 
   const homeWon = isFinished && hasScores && homeScore > awayScore;
   const awayWon = isFinished && hasScores && awayScore > homeScore;

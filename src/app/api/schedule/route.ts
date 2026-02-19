@@ -110,8 +110,8 @@ export async function GET(request: NextRequest) {
                 secondaryColor: awayTeam.secondaryColor,
               }
             : null,
-          homeScore: game.homeScore ?? 0,
-          awayScore: game.awayScore ?? 0,
+          homeScore: game.status === 'completed' ? (game.homeScore ?? 0) : null,
+          awayScore: game.status === 'completed' ? (game.awayScore ?? 0) : null,
           completedAt: game.completedAt,
           broadcastStartedAt: game.broadcastStartedAt,
         };
