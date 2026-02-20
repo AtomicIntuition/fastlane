@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { PlayResult, PlayType } from '@/lib/simulation/types';
+import type { PlayResult } from '@/lib/simulation/types';
 import { getTeamLogoUrl } from '@/lib/utils/team-logos';
 
 interface PlaySceneProps {
@@ -37,6 +37,64 @@ function easeOutCubic(t: number): number {
 
 function easeInOutQuad(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+function easeOutQuad(t: number): number {
+  return 1 - (1 - t) * (1 - t);
+}
+
+// ══════════════════════════════════════════════════════════════
+// ROUTE SHAPE SYSTEM (pass play visual paths)
+// ══════════════════════════════════════════════════════════════
+
+type RoutePoint = { dx: number; dy: number };
+
+/** Route waypoints: dx = forward progress 0→1, dy = lateral offset -1 to +1 */
+function getRouteShape(call: string, yardsGained: number): RoutePoint[] {
+  switch (call) {
+    case 'pass_quick':
+    case 'pass_rpo':
+      // Slant: short diagonal across middle
+      return [{ dx: 0, dy: 0 }, { dx: 0.3, dy: 0 }, { dx: 1, dy: 0.6 }];
+    case 'pass_short':
+    case 'play_action_short':
+      // Curl: upfield → stop → settle back
+      return [{ dx: 0, dy: 0 }, { dx: 0.5, dy: 0 }, { dx: 0.85, dy: -0.15 }, { dx: 0.75, dy: -0.1 }];
+    case 'pass_medium':
+      // Dig/In: upfield → sharp break across
+      return [{ dx: 0, dy: 0 }, { dx: 0.55, dy: 0 }, { dx: 0.65, dy: 0.1 }, { dx: 1, dy: 0.7 }];
+    case 'pass_deep':
+    case 'play_action_deep':
+      if (yardsGained > 30) {
+        // Go: straight deep
+        return [{ dx: 0, dy: 0 }, { dx: 0.4, dy: 0.05 }, { dx: 1, dy: 0.1 }];
+      }
+      // Post: upfield → angle inside
+      return [{ dx: 0, dy: 0 }, { dx: 0.5, dy: -0.1 }, { dx: 0.7, dy: 0.05 }, { dx: 1, dy: 0.5 }];
+    case 'screen_pass':
+      // Screen: drift back/lateral → turn upfield
+      return [{ dx: -0.15, dy: 0.5 }, { dx: -0.1, dy: 0.6 }, { dx: 0.2, dy: 0.55 }, { dx: 1, dy: 0.3 }];
+    default:
+      // Generic short route
+      return [{ dx: 0, dy: 0 }, { dx: 0.4, dy: 0.15 }, { dx: 1, dy: 0.3 }];
+  }
+}
+
+/** Smoothly interpolate between route waypoints */
+function interpolateRoute(points: RoutePoint[], t: number): { dx: number; dy: number } {
+  if (points.length < 2) return points[0] || { dx: 0, dy: 0 };
+  const clamped = Math.max(0, Math.min(1, t));
+  const segCount = points.length - 1;
+  const rawIdx = clamped * segCount;
+  const idx = Math.min(Math.floor(rawIdx), segCount - 1);
+  const localT = rawIdx - idx;
+  const smooth = easeInOutQuad(localT);
+  const a = points[idx];
+  const b = points[idx + 1];
+  return {
+    dx: a.dx + (b.dx - a.dx) * smooth,
+    dy: a.dy + (b.dy - a.dy) * smooth,
+  };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -165,7 +223,7 @@ export function PlayScene({
           className="absolute inset-0 w-full h-full"
         >
           <PlayTrajectory
-            playType={playType}
+            lastPlay={lastPlay}
             fromX={fromX}
             toX={toX}
             possession={possession}
@@ -186,51 +244,66 @@ export function PlayScene({
         />
       )}
 
-      {/* ─── Pass target indicator during QB dropback ─── */}
+      {/* ─── Pass target indicator (route-aware position) ─── */}
       {phase === 'development' && animProgress < 0.4 &&
-        (playType === 'pass_complete' || playType === 'pass_incomplete') && (
-        <div
-          className="absolute rounded-full animate-pulse"
-          style={{
-            left: `${clamp(playType === 'pass_complete' ? toX : fromX - offDir * 12, 5, 95)}%`,
-            top: '50%',
-            width: 16,
-            height: 16,
-            transform: 'translate(-50%, -50%)',
-            border: `2px solid ${playType === 'pass_complete' ? '#3b82f6' : '#ef4444'}`,
-            backgroundColor: `${playType === 'pass_complete' ? '#3b82f6' : '#ef4444'}20`,
-            opacity: 0.7 * (1 - animProgress / 0.4),
-            zIndex: 4,
-          }}
-        />
-      )}
+        (playType === 'pass_complete' || playType === 'pass_incomplete') && (() => {
+        const color = playType === 'pass_complete' ? '#3b82f6' : '#ef4444';
+        const qbX = fromX + offDir * (lastPlay.call === 'play_action_short' || lastPlay.call === 'play_action_deep' ? 4 : 3);
+        const targetX = playType === 'pass_complete' ? toX : fromX - offDir * 12;
+        const route = getRouteShape(lastPlay.call, lastPlay.yardsGained);
+        const endPt = interpolateRoute(route, 1);
+        const lateralScale = playType === 'pass_complete' ? 18 : 12;
+        const targetY = 50 + endPt.dy * lateralScale;
+        const targetFieldX = qbX + (targetX - qbX) * endPt.dx;
+        return (
+          <div
+            className="absolute rounded-full animate-pulse"
+            style={{
+              left: `${clamp(targetFieldX, 5, 95)}%`,
+              top: `${clamp(targetY, 10, 90)}%`,
+              width: 16,
+              height: 16,
+              transform: 'translate(-50%, -50%)',
+              border: `2px solid ${color}`,
+              backgroundColor: `${color}20`,
+              opacity: 0.7 * (1 - animProgress / 0.4),
+              zIndex: 4,
+            }}
+          />
+        );
+      })()}
 
-      {/* ─── Trailing dots for run plays ─── */}
-      {phase === 'development' && (playType === 'run' || playType === 'scramble' || playType === 'two_point') &&
-        animProgress > 0.1 && (
-        <>
-          {[0.06, 0.12, 0.18].map((offset, i) => {
-            const trailT = Math.max(0, animProgress - offset);
-            const pos = calculateBallPosition(lastPlay, fromX, toX, trailT, possession);
-            return (
-              <div
-                key={i}
-                className="absolute rounded-full"
-                style={{
-                  left: `${clamp(pos.x, 2, 98)}%`,
-                  top: `${clamp(pos.y, 5, 95)}%`,
-                  width: 6 - i * 1.5,
-                  height: 6 - i * 1.5,
-                  transform: 'translate(-50%, -50%)',
-                  backgroundColor: offenseColor,
-                  opacity: 0.5 - i * 0.15,
-                  zIndex: 5,
-                }}
-              />
-            );
-          })}
-        </>
-      )}
+      {/* ─── Trailing dots for runs, scrambles, and kick returns ─── */}
+      {phase === 'development' && (() => {
+        const isRunType = playType === 'run' || playType === 'scramble' || playType === 'two_point';
+        const isKickReturn = (playType === 'kickoff' || playType === 'punt') && animProgress > 0.35;
+        if (!isRunType && !isKickReturn) return null;
+        if (isRunType && animProgress <= 0.1) return null;
+        return (
+          <>
+            {[0.04, 0.08, 0.12].map((offset, i) => {
+              const trailT = Math.max(0, animProgress - offset);
+              const pos = calculateBallPosition(lastPlay, fromX, toX, trailT, possession);
+              return (
+                <div
+                  key={i}
+                  className="absolute rounded-full"
+                  style={{
+                    left: `${clamp(pos.x, 2, 98)}%`,
+                    top: `${clamp(pos.y, 5, 95)}%`,
+                    width: 6 - i * 1.5,
+                    height: 6 - i * 1.5,
+                    transform: 'translate(-50%, -50%)',
+                    backgroundColor: isKickReturn ? '#fbbf24' : offenseColor,
+                    opacity: 0.5 - i * 0.15,
+                    zIndex: 5,
+                  }}
+                />
+              );
+            })}
+          </>
+        );
+      })()}
 
       {/* ─── Animated ball with team logo (all active phases) ─── */}
       <div
@@ -444,73 +517,27 @@ function calculateBallPosition(
   const offDir = possession === 'away' ? -1 : 1;
 
   switch (play.type) {
-    case 'run': case 'scramble': case 'two_point': {
-      const eased = easeOutCubic(t);
-      const x = fromX + (toX - fromX) * eased;
-      const weaveAmt = play.type === 'scramble' ? 5 : 3;
-      const weave = Math.sin(t * Math.PI * 3) * weaveAmt * (1 - t);
-      return { x, y: 50 + weave };
-    }
-    case 'pass_complete': {
-      if (t < 0.15) {
-        return { x: fromX + offDir * 3 * easeOutCubic(t / 0.15), y: 50 };
-      } else if (t < 0.4) {
-        const qbX = fromX + offDir * 3;
-        return { x: qbX + Math.sin((t - 0.15) * 12) * 0.5, y: 50 };
-      } else if (t < 0.85) {
-        const throwT = easeInOutQuad((t - 0.4) / 0.45);
-        const qbX = fromX + offDir * 3;
-        const dist = Math.abs(toX - qbX);
-        const arcHeight = Math.min(dist * 0.5, 25);
-        const x = qbX + (toX - qbX) * throwT;
-        const y = 50 - arcHeight * Math.sin(throwT * Math.PI);
-        const lateral = play.yardsGained > 15
-          ? Math.sin(throwT * Math.PI * 0.5) * 8
-          : Math.sin(throwT * Math.PI * 0.5) * 3;
-        return { x, y: y + lateral };
-      } else {
-        return { x: toX, y: 50 };
-      }
-    }
-    case 'pass_incomplete': {
-      if (t < 0.15) return { x: fromX + offDir * 3 * easeOutCubic(t / 0.15), y: 50 };
-      if (t < 0.4) return { x: fromX + offDir * 3, y: 50 };
-      if (t < 0.7) {
-        const throwT = (t - 0.4) / 0.3;
-        const qbX = fromX + offDir * 3;
-        const targetX = fromX - offDir * 12;
-        const dist = Math.abs(targetX - qbX);
-        const arcHeight = Math.min(dist * 0.4, 18);
-        return {
-          x: qbX + (targetX - qbX) * easeInOutQuad(throwT),
-          y: 50 - arcHeight * Math.sin(throwT * Math.PI),
-        };
-      }
-      const dropT = (t - 0.7) / 0.3;
-      const qbX = fromX + offDir * 3;
-      const targetX = fromX - offDir * 12;
-      const endX = qbX + (targetX - qbX) * 0.9;
-      return { x: endX + (targetX - endX) * dropT * 0.3, y: 50 + dropT * 15 };
-    }
+    case 'run': case 'two_point':
+      return calculateRunPosition(play, fromX, toX, t, offDir);
+    case 'scramble':
+      return calculateScramblePosition(fromX, toX, t, offDir);
+    case 'pass_complete':
+      return calculatePassPosition(play, fromX, toX, t, offDir);
+    case 'pass_incomplete':
+      return calculateIncompletePassPosition(play, fromX, toX, t, offDir);
     case 'sack': {
       if (t < 0.2) return { x: fromX + offDir * 2 * easeOutCubic(t / 0.2), y: 50 };
       if (t < 0.5) return { x: fromX + offDir * 2 + Math.sin((t - 0.2) * 15) * 0.8, y: 50 };
       const sackT = easeOutCubic((t - 0.5) / 0.5);
-      const qbX2 = fromX + offDir * 2;
-      const x = qbX2 + (toX - qbX2) * sackT;
-      const jolt = t > 0.75 ? Math.sin((t - 0.75) * 30) * 1.5 * (1 - t) : 0;
-      return { x: x + jolt, y: 50 + jolt * 0.5 };
+      const qbX = fromX + offDir * 2;
+      const x = qbX + (toX - qbX) * sackT;
+      const jolt = t > 0.75 ? Math.sin((t - 0.75) * 30) * 2 * (1 - t) : 0;
+      return { x: x + jolt, y: 50 + jolt * 0.7 };
     }
-    case 'punt': {
-      const eased = easeInOutQuad(t);
-      const dist = Math.abs(toX - fromX);
-      return { x: fromX + (toX - fromX) * eased, y: 50 - Math.min(dist * 0.9, 38) * Math.sin(t * Math.PI) };
-    }
-    case 'kickoff': {
-      const eased = easeInOutQuad(t);
-      const dist = Math.abs(toX - fromX);
-      return { x: fromX + (toX - fromX) * eased, y: 50 - Math.min(dist * 0.7, 35) * Math.sin(t * Math.PI) };
-    }
+    case 'kickoff':
+      return calculateKickoffPosition(play, fromX, toX, t, offDir);
+    case 'punt':
+      return calculatePuntPosition(play, fromX, toX, t, offDir);
     case 'field_goal': case 'extra_point': {
       const goalPostX = possession === 'away' ? 91.66 : 8.33;
       const eased = easeInOutQuad(t);
@@ -522,53 +549,383 @@ function calculateBallPosition(
   }
 }
 
+// ── Run Position (play-call aware) ──────────────────────────
+
+function calculateRunPosition(
+  play: PlayResult, fromX: number, toX: number, t: number, offDir: number,
+): { x: number; y: number } {
+  const call = play.call;
+
+  switch (call) {
+    case 'run_power': case 'run_zone': case 'run_inside': {
+      // Inside runs: mostly forward, small lateral drift, juke at 40%
+      const eased = easeOutQuad(t);
+      const x = fromX + (toX - fromX) * eased;
+      const drift = Math.sin(t * Math.PI * 2) * 6 * (1 - t);
+      const juke = t > 0.35 && t < 0.5 ? Math.sin((t - 0.35) * Math.PI / 0.15) * 4 : 0;
+      return { x, y: 50 + drift + juke };
+    }
+    case 'run_outside_zone': case 'run_sweep': case 'run_outside': {
+      // Wide lateral sweep, turn corner at 35%, sprint upfield
+      if (t < 0.35) {
+        // Lateral sweep phase
+        const sweepT = easeOutQuad(t / 0.35);
+        const x = fromX + (toX - fromX) * 0.1 * sweepT;
+        const y = 50 + offDir * 22 * sweepT;
+        return { x, y };
+      }
+      // Turn corner and sprint upfield
+      const sprintT = easeOutQuad((t - 0.35) / 0.65);
+      const cornerX = fromX + (toX - fromX) * 0.1;
+      const x = cornerX + (toX - cornerX) * sprintT;
+      const cornerY = 50 + offDir * 22;
+      const y = cornerY + (50 - cornerY) * easeOutCubic(sprintT);
+      return { x, y };
+    }
+    case 'run_draw': {
+      // Step back like a pass, pause, then burst forward
+      if (t < 0.25) {
+        // Fake pass dropback
+        const backT = easeOutQuad(t / 0.25);
+        return { x: fromX + offDir * 3 * backT, y: 50 };
+      }
+      if (t < 0.45) {
+        // Hesitation / read
+        const qbX = fromX + offDir * 3;
+        const jitter = Math.sin((t - 0.25) * 30) * 0.5;
+        return { x: qbX + jitter, y: 50 };
+      }
+      // Burst forward
+      const burstT = easeOutCubic((t - 0.45) / 0.55);
+      const startX = fromX + offDir * 3;
+      const x = startX + (toX - startX) * burstT;
+      const weave = Math.sin(burstT * Math.PI * 2) * 5 * (1 - burstT);
+      return { x, y: 50 + weave };
+    }
+    case 'run_counter': {
+      // Fake one direction, plant at 30%, cut back opposite
+      if (t < 0.30) {
+        const fakeT = easeOutQuad(t / 0.30);
+        const x = fromX + (toX - fromX) * 0.05 * fakeT;
+        return { x, y: 50 - offDir * 18 * fakeT };
+      }
+      if (t < 0.45) {
+        // Plant and cut
+        const cutT = (t - 0.30) / 0.15;
+        const fakeX = fromX + (toX - fromX) * 0.05;
+        const x = fakeX + (toX - fromX) * 0.1 * cutT;
+        const fakeY = 50 - offDir * 18;
+        return { x, y: fakeY + offDir * 30 * easeInOutQuad(cutT) };
+      }
+      // Sprint to destination
+      const sprintT = easeOutQuad((t - 0.45) / 0.55);
+      const cutX = fromX + (toX - fromX) * 0.15;
+      const cutY = 50 + offDir * 12;
+      const x = cutX + (toX - cutX) * sprintT;
+      const y = cutY + (50 - cutY) * sprintT;
+      return { x, y };
+    }
+    case 'run_option': {
+      // Mesh point delay, read, commit
+      if (t < 0.20) {
+        // Mesh point — move laterally along LOS
+        const meshT = t / 0.20;
+        return { x: fromX, y: 50 + offDir * 8 * meshT };
+      }
+      if (t < 0.40) {
+        // Read phase — slight forward movement
+        const readT = (t - 0.20) / 0.20;
+        const x = fromX + (toX - fromX) * 0.1 * readT;
+        return { x, y: 50 + offDir * 8 };
+      }
+      // Commit burst
+      const burstT = easeOutQuad((t - 0.40) / 0.60);
+      const startX = fromX + (toX - fromX) * 0.1;
+      const x = startX + (toX - startX) * burstT;
+      const y = 50 + offDir * 8 * (1 - burstT);
+      return { x, y };
+    }
+    case 'run_qb_sneak': {
+      // Fast straight burst, minimal lateral
+      const eased = easeOutCubic(t);
+      const x = fromX + (toX - fromX) * eased;
+      const wobble = Math.sin(t * Math.PI * 5) * 1.5 * (1 - t);
+      return { x, y: 50 + wobble };
+    }
+    default: {
+      // Default run: forward with moderate weave
+      const eased = easeOutQuad(t);
+      const x = fromX + (toX - fromX) * eased;
+      const weave = Math.sin(t * Math.PI * 3) * 5 * (1 - t);
+      return { x, y: 50 + weave };
+    }
+  }
+}
+
+// ── Scramble Position ────────────────────────────────────────
+
+function calculateScramblePosition(
+  fromX: number, toX: number, t: number, offDir: number,
+): { x: number; y: number } {
+  const eased = easeOutCubic(t);
+  const x = fromX + (toX - fromX) * eased;
+  // Enhanced weave: 4 direction changes with ±12 amplitude
+  const weave = Math.sin(t * Math.PI * 4) * 12 * (1 - t * 0.7);
+  const secondaryWeave = Math.cos(t * Math.PI * 2.5) * 4 * (1 - t);
+  return { x, y: 50 + weave + secondaryWeave };
+}
+
+// ── Pass Position (route-shape aware) ────────────────────────
+
+function calculatePassPosition(
+  play: PlayResult, fromX: number, toX: number, t: number, offDir: number,
+): { x: number; y: number } {
+  const isPlayAction = play.call === 'play_action_short' || play.call === 'play_action_deep';
+  const isScreen = play.call === 'screen_pass';
+  const dropEnd = isPlayAction ? 0.22 : 0.12;
+  const holdEnd = isPlayAction ? 0.42 : 0.32;
+  const throwEnd = 0.82;
+
+  if (t < dropEnd) {
+    // QB dropback (extended for play-action with fake handoff movement)
+    const dropT = easeOutCubic(t / dropEnd);
+    const dropDist = isPlayAction ? 4 : 3;
+    const x = fromX + offDir * dropDist * dropT;
+    // Play-action: slight lateral fake before dropping back
+    const fakeY = isPlayAction ? Math.sin(dropT * Math.PI) * 3 : 0;
+    return { x, y: 50 + fakeY };
+  }
+  if (t < holdEnd) {
+    // Hold/read in pocket with jitter
+    const qbX = fromX + offDir * (isPlayAction ? 4 : 3);
+    const jitter = Math.sin((t - dropEnd) * 25) * 0.4;
+    return { x: qbX + jitter, y: 50 };
+  }
+  if (t < throwEnd) {
+    // Ball in air: trace route shape
+    const throwT = (t - holdEnd) / (throwEnd - holdEnd);
+    const smoothT = easeInOutQuad(throwT);
+    const qbX = fromX + offDir * (isPlayAction ? 4 : 3);
+    const route = getRouteShape(play.call, play.yardsGained);
+    const rPt = interpolateRoute(route, smoothT);
+
+    // Map route dx/dy to field coordinates
+    const routeDistX = toX - qbX;
+    const x = qbX + routeDistX * rPt.dx;
+    const lateralScale = 18;
+    const routeY = 50 + rPt.dy * lateralScale;
+
+    // Add arc height for "ball in air" feel (not for screens)
+    const arcHeight = isScreen ? 0 : Math.min(Math.abs(routeDistX) * 0.35, 18);
+    const arc = arcHeight * Math.sin(smoothT * Math.PI);
+
+    return { x, y: routeY - arc };
+  }
+  // RAC: drift back toward y=50 from catch point
+  const racT = (t - throwEnd) / (1 - throwEnd);
+  const route = getRouteShape(play.call, play.yardsGained);
+  const endPt = interpolateRoute(route, 1);
+  const catchY = 50 + endPt.dy * 18;
+  return { x: toX, y: catchY + (50 - catchY) * easeOutQuad(racT) };
+}
+
+// ── Incomplete Pass Position ─────────────────────────────────
+
+function calculateIncompletePassPosition(
+  play: PlayResult, fromX: number, toX: number, t: number, offDir: number,
+): { x: number; y: number } {
+  const isPlayAction = play.call === 'play_action_short' || play.call === 'play_action_deep';
+  const dropEnd = isPlayAction ? 0.22 : 0.15;
+  const holdEnd = isPlayAction ? 0.42 : 0.35;
+
+  if (t < dropEnd) {
+    const dropT = easeOutCubic(t / dropEnd);
+    return { x: fromX + offDir * 3 * dropT, y: 50 };
+  }
+  if (t < holdEnd) {
+    const qbX = fromX + offDir * 3;
+    return { x: qbX + Math.sin((t - dropEnd) * 20) * 0.4, y: 50 };
+  }
+  if (t < 0.72) {
+    // Ball traces route shape toward target area
+    const throwT = (t - holdEnd) / (0.72 - holdEnd);
+    const smoothT = easeInOutQuad(throwT);
+    const qbX = fromX + offDir * 3;
+    const targetX = fromX - offDir * 12;
+    const route = getRouteShape(play.call, play.yardsGained);
+    const rPt = interpolateRoute(route, smoothT);
+
+    const routeDistX = targetX - qbX;
+    const x = qbX + routeDistX * rPt.dx;
+    const routeY = 50 + rPt.dy * 12;
+    const arcHeight = Math.min(Math.abs(routeDistX) * 0.4, 16);
+    const arc = arcHeight * Math.sin(smoothT * Math.PI);
+    return { x, y: routeY - arc };
+  }
+  // Ball falls to ground
+  const dropT = (t - 0.72) / 0.28;
+  const qbX = fromX + offDir * 3;
+  const targetX = fromX - offDir * 12;
+  const route = getRouteShape(play.call, play.yardsGained);
+  const endPt = interpolateRoute(route, 1);
+  const fallX = qbX + (targetX - qbX) * 0.9;
+  const fallY = 50 + endPt.dy * 12;
+  return { x: fallX + (targetX - fallX) * dropT * 0.2, y: fallY + dropT * 15 };
+}
+
+// ── Kickoff Position (two-phase: arc + return) ──────────────
+
+function calculateKickoffPosition(
+  play: PlayResult, fromX: number, toX: number, t: number, offDir: number,
+): { x: number; y: number } {
+  const isTouchback = play.yardsGained === 0;
+  const totalDist = toX - fromX;
+  // Landing point: deep in receiving territory (85% of way to far end zone)
+  const farEndZone = offDir === 1 ? 8.33 : 91.66;
+  const landingX = fromX + (farEndZone - fromX) * 0.85;
+
+  if (isTouchback) {
+    // Single phase: arc into end zone, ball stops
+    const eased = easeInOutQuad(t);
+    const x = fromX + (farEndZone - fromX) * 0.9 * eased;
+    const arcHeight = 38;
+    return { x, y: 50 - arcHeight * Math.sin(t * Math.PI) };
+  }
+
+  const kickPhaseEnd = 0.32;
+
+  if (t < kickPhaseEnd) {
+    // Phase 1: Kick arc from kicker to landing spot
+    const kickT = t / kickPhaseEnd;
+    const eased = easeInOutQuad(kickT);
+    const x = fromX + (landingX - fromX) * eased;
+    const arcHeight = 38;
+    return { x, y: 50 - arcHeight * Math.sin(kickT * Math.PI) };
+  }
+
+  // Phase 2: Return run from landing spot back to final position
+  const returnT = (t - kickPhaseEnd) / (1 - kickPhaseEnd);
+  const eased = easeOutQuad(returnT);
+  const x = landingX + (toX - landingX) * eased;
+
+  // Lateral cuts during return
+  const isTdReturn = play.isTouchdown;
+  const numCuts = isTdReturn ? 4 : 3;
+  const amplitude = isTdReturn ? 15 : 10;
+  const decay = 1 - returnT * 0.4;
+  const cuts = Math.sin(returnT * Math.PI * numCuts) * amplitude * decay;
+
+  return { x, y: 50 + cuts };
+}
+
+// ── Punt Position (two-phase: arc + return) ──────────────────
+
+function calculatePuntPosition(
+  play: PlayResult, fromX: number, toX: number, t: number, offDir: number,
+): { x: number; y: number } {
+  const desc = (play.description || '').toLowerCase();
+  const isFairCatch = desc.includes('fair catch');
+  const isTouchback = play.yardsGained === 0 || desc.includes('touchback');
+
+  if (isFairCatch || isTouchback) {
+    // Single phase: arc to destination
+    const eased = easeInOutQuad(t);
+    const dist = Math.abs(toX - fromX);
+    const arcHeight = Math.min(dist * 0.9, 38);
+    return { x: fromX + (toX - fromX) * eased, y: 50 - arcHeight * Math.sin(t * Math.PI) };
+  }
+
+  const kickPhaseEnd = 0.45; // Punt hangs longer
+  // Landing overshoots toX by 20% of distance
+  const overshoot = (toX - fromX) * 0.2;
+  const landingX = toX + overshoot;
+
+  if (t < kickPhaseEnd) {
+    // Phase 1: Punt arc
+    const kickT = t / kickPhaseEnd;
+    const eased = easeInOutQuad(kickT);
+    const x = fromX + (landingX - fromX) * eased;
+    const dist = Math.abs(landingX - fromX);
+    const arcHeight = Math.min(dist * 0.9, 38);
+    return { x, y: 50 - arcHeight * Math.sin(kickT * Math.PI) };
+  }
+
+  // Phase 2: Return run from landing back toward toX
+  const returnT = (t - kickPhaseEnd) / (1 - kickPhaseEnd);
+  const eased = easeOutQuad(returnT);
+  const x = landingX + (toX - landingX) * eased;
+  const amplitude = play.isTouchdown ? 12 : 8;
+  const cuts = Math.sin(returnT * Math.PI * 3) * amplitude * (1 - returnT * 0.5);
+
+  return { x, y: 50 + cuts };
+}
+
 // ══════════════════════════════════════════════════════════════
 // PLAY TRAJECTORY TRAIL (SVG)
 // ══════════════════════════════════════════════════════════════
 
 function PlayTrajectory({
-  playType, fromX, toX, possession, progress, success,
+  lastPlay, fromX, toX, possession, progress, success,
 }: {
-  playType: PlayType; fromX: number; toX: number;
+  lastPlay: PlayResult; fromX: number; toX: number;
   possession: 'home' | 'away'; progress: number; success: boolean;
 }) {
   const offDir = possession === 'away' ? -1 : 1;
+  const playType = lastPlay.type;
 
   switch (playType) {
     case 'run': case 'scramble': case 'two_point': {
-      const currentX = fromX + (toX - fromX) * Math.min(progress, 1);
-      if (Math.abs(currentX - fromX) < 0.3) return null;
+      // Sample the actual path at 20 points to create a curved SVG path
+      const samples = 20;
+      const points: { x: number; y: number }[] = [];
+      const progressCap = Math.min(progress, 1);
+      for (let i = 0; i <= samples; i++) {
+        const sampleT = (i / samples) * progressCap;
+        const pos = playType === 'scramble'
+          ? calculateScramblePosition(fromX, toX, sampleT, offDir)
+          : calculateRunPosition(lastPlay, fromX, toX, sampleT, offDir);
+        points.push(pos);
+      }
+      if (points.length < 2 || Math.abs(points[points.length - 1].x - points[0].x) < 0.3) return null;
       const color = playType === 'scramble' ? '#4ade80' : '#22c55e';
+      const d = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
+      const lastPt = points[points.length - 1];
       return (
         <g>
-          {/* Glow line */}
-          <line x1={fromX} y1={50} x2={currentX} y2={50}
-            stroke={color} strokeWidth="6" strokeLinecap="round" opacity="0.15" />
-          {/* Main line */}
-          <line x1={fromX} y1={50} x2={currentX} y2={50}
-            stroke={color} strokeWidth="3" strokeLinecap="round" opacity="0.6" />
+          <path d={d} stroke={color} strokeWidth="5" fill="none" strokeLinecap="round" opacity="0.12" />
+          <path d={d} stroke={color} strokeWidth="2.5" fill="none" strokeLinecap="round" opacity="0.5" />
           {progress > 0.3 && (
             <polygon
               points={toX > fromX
-                ? `${currentX},50 ${currentX - 2},47 ${currentX - 2},53`
-                : `${currentX},50 ${currentX + 2},47 ${currentX + 2},53`}
-              fill={color} opacity="0.7" />
+                ? `${lastPt.x},${lastPt.y} ${lastPt.x - 2},${lastPt.y - 3} ${lastPt.x - 2},${lastPt.y + 3}`
+                : `${lastPt.x},${lastPt.y} ${lastPt.x + 2},${lastPt.y - 3} ${lastPt.x + 2},${lastPt.y + 3}`}
+              fill={color} opacity="0.6" />
           )}
         </g>
       );
     }
     case 'pass_complete': case 'pass_incomplete': {
       const color = playType === 'pass_complete' ? '#3b82f6' : '#ef4444';
-      const qbX = fromX + offDir * 3;
+      const qbX = fromX + offDir * (lastPlay.call === 'play_action_short' || lastPlay.call === 'play_action_deep' ? 4 : 3);
       const targetX = playType === 'pass_complete' ? toX : fromX - offDir * 12;
-      const dist = Math.abs(targetX - qbX);
-      const arcHeight = Math.min(dist * 0.5, 25);
-      const midX = (qbX + targetX) / 2;
+      // Draw route shape as dashed line
+      const route = getRouteShape(lastPlay.call, lastPlay.yardsGained);
+      const routeSamples = 12;
+      const routeDistX = targetX - qbX;
+      const routePoints: { x: number; y: number }[] = [];
+      for (let i = 0; i <= routeSamples; i++) {
+        const sT = i / routeSamples;
+        const rPt = interpolateRoute(route, sT);
+        routePoints.push({
+          x: qbX + routeDistX * rPt.dx,
+          y: 50 + rPt.dy * (playType === 'pass_complete' ? 18 : 12),
+        });
+      }
+      const routeD = `M ${routePoints[0].x} ${routePoints[0].y} ` + routePoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
       return (
         <g>
-          <path d={`M ${qbX} 50 Q ${midX} ${50 - arcHeight} ${targetX} 50`}
-            stroke={color} strokeWidth="2" fill="none"
-            strokeDasharray="5 3" strokeLinecap="round" opacity="0.5" />
+          <path d={routeD} stroke={color} strokeWidth="1.8" fill="none"
+            strokeDasharray="4 3" strokeLinecap="round" opacity="0.45" />
           {progress > 0.7 && playType === 'pass_complete' && (
             <>
               <circle cx={toX} cy={50} r="2.5" fill="none" stroke={color} strokeWidth="0.5" opacity="0.5" />
@@ -584,11 +941,59 @@ function PlayTrajectory({
         stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" opacity="0.5" strokeDasharray="2 2" />;
     }
     case 'punt': case 'kickoff': {
-      const dist = Math.abs(toX - fromX);
-      const arcH = playType === 'punt' ? Math.min(dist * 0.9, 38) : Math.min(dist * 0.7, 35);
-      const midX = (fromX + toX) / 2;
-      return <path d={`M ${fromX} 50 Q ${midX} ${50 - arcH} ${toX} 50`}
-        stroke="#fbbf24" strokeWidth="1.2" fill="none" strokeDasharray="3 4" opacity="0.4" />;
+      // Two-phase trajectory: kick arc + return path
+      const isKickoff = playType === 'kickoff';
+      const desc = (lastPlay.description || '').toLowerCase();
+      const isFairCatch = desc.includes('fair catch');
+      const isTouchback = lastPlay.yardsGained === 0 || desc.includes('touchback');
+      const kickPhaseEnd = isKickoff ? 0.32 : 0.45;
+
+      // Calculate landing point
+      let landingX: number;
+      if (isKickoff) {
+        const farEndZone = offDir === 1 ? 8.33 : 91.66;
+        landingX = isTouchback ? fromX + (farEndZone - fromX) * 0.9 : fromX + (farEndZone - fromX) * 0.85;
+      } else {
+        const overshoot = (toX - fromX) * 0.2;
+        landingX = (isFairCatch || isTouchback) ? toX : toX + overshoot;
+      }
+
+      const dist = Math.abs(landingX - fromX);
+      const arcH = isKickoff ? 38 : Math.min(dist * 0.9, 38);
+      const midX = (fromX + landingX) / 2;
+
+      // Kick arc (dashed gold)
+      const arcD = `M ${fromX} 50 Q ${midX} ${50 - arcH} ${landingX} 50`;
+
+      if (isFairCatch || isTouchback) {
+        return <path d={arcD} stroke="#fbbf24" strokeWidth="1.2" fill="none" strokeDasharray="3 4" opacity="0.4" />;
+      }
+
+      // Return path (solid green, only if in return phase)
+      const showReturn = progress > kickPhaseEnd;
+      let returnD = '';
+      if (showReturn) {
+        const returnSamples = 15;
+        const returnPoints: { x: number; y: number }[] = [];
+        const progressCap = Math.min(progress, 1);
+        for (let i = 0; i <= returnSamples; i++) {
+          const sT = kickPhaseEnd + (i / returnSamples) * (progressCap - kickPhaseEnd);
+          const pos = isKickoff
+            ? calculateKickoffPosition(lastPlay, fromX, toX, sT, offDir)
+            : calculatePuntPosition(lastPlay, fromX, toX, sT, offDir);
+          returnPoints.push(pos);
+        }
+        if (returnPoints.length >= 2) {
+          returnD = `M ${returnPoints[0].x} ${returnPoints[0].y} ` + returnPoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
+        }
+      }
+
+      return (
+        <g>
+          <path d={arcD} stroke="#fbbf24" strokeWidth="1.2" fill="none" strokeDasharray="3 4" opacity="0.4" />
+          {returnD && <path d={returnD} stroke="#22c55e" strokeWidth="2" fill="none" strokeLinecap="round" opacity="0.45" />}
+        </g>
+      );
     }
     case 'field_goal': case 'extra_point': {
       const goalPostX = possession === 'away' ? 91.66 : 8.33;
