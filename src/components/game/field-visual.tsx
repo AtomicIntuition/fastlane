@@ -55,7 +55,16 @@ export function FieldVisual({
     return team === 'home' ? 100 - pos : pos;
   };
 
-  const absoluteBallPct = toAbsolutePercent(ballPosition, possession);
+  let absoluteBallPct = toAbsolutePercent(ballPosition, possession);
+
+  // Force ball to the correct end zone on touchdowns.
+  // After a TD the engine sets ballPosition=15 (PAT spot), so the normal
+  // coordinate conversion places the ball nowhere near the end zone.
+  // Override: home scores at the left end zone (0%), away at the right (100%).
+  if (lastPlay?.isTouchdown && lastPlay?.scoring) {
+    absoluteBallPct = lastPlay.scoring.team === 'home' ? 0 : 100;
+  }
+
   const absoluteFirstDownPct = toAbsolutePercent(
     Math.min(firstDownLine, 100),
     possession
@@ -69,12 +78,12 @@ export function FieldVisual({
 
   let ballLeft = fieldStart + (absoluteBallPct / 100) * fieldWidth;
 
-  // Push ball INTO the end zone on touchdowns (not just at the goal line)
+  // Push ball visually INTO the end zone graphic
   if (lastPlay?.isTouchdown) {
     if (absoluteBallPct >= 95) {
-      ballLeft = 96; // Deep in the home (right) end zone
+      ballLeft = 96; // Deep in the right end zone
     } else if (absoluteBallPct <= 5) {
-      ballLeft = 4;  // Deep in the away (left) end zone
+      ballLeft = 4;  // Deep in the left end zone
     }
   }
 

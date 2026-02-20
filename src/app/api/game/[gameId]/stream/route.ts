@@ -220,8 +220,8 @@ export async function GET(
               delayMs = Math.max(0, event.displayTimestamp - lastTimestamp);
             }
 
-            // Cap the max delay — compressed pacing keeps delays reasonable
-            delayMs = Math.min(delayMs, 20_000);
+            // Cap the max delay — tight pacing keeps engagement high
+            delayMs = Math.min(delayMs, 10_000);
 
             if (delayMs > 0) {
               const alive = await sleep(delayMs);

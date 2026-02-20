@@ -109,6 +109,13 @@ import { detectDrama } from '../narrative/drama-detector';
 import { scoreExcitement, getReactionFromExcitement } from '../narrative/excitement-scorer';
 import { createStoryState, updateStoryState, getActiveThreads } from '../narrative/story-tracker';
 
+// --- Commentary ---
+import {
+  getTemplate,
+  fillTemplate,
+  buildTemplateVars,
+} from '../commentary/templates';
+
 // --- Constants ---
 import {
   QUARTER_LENGTH,
@@ -120,7 +127,6 @@ import {
   REALTIME_TWO_MINUTE_WARNING_MS,
   REALTIME_TOUCHDOWN_BONUS_MS,
   REALTIME_TURNOVER_BONUS_MS,
-  PLAY_DELAY_NORMAL,
 } from './constants';
 
 // ============================================================================
@@ -173,44 +179,27 @@ function findPlayerByPosition(players: Player[], position: string): Player | nul
   return candidates.reduce((best, p) => (p.rating > best.rating ? p : best));
 }
 
-/** Build a basic template-based commentary for a play. */
-function buildTemplateCommentary(
+/**
+ * Build broadcast-quality commentary using the rich template system.
+ * Uses hundreds of Tony Romo / Jim Nantz-style templates organized by
+ * play type, excitement level, and game situation.
+ */
+function buildRichCommentary(
   play: PlayResult,
   state: GameState,
   excitement: number,
   crowdReaction: CrowdReaction,
+  rng: { randomInt: (min: number, max: number) => number },
 ): PlayCommentary {
-  // Play-by-play comes from the play description
-  const playByPlay = play.description || 'The play develops...';
-
-  // Color analysis based on game situation
-  let colorAnalysis = '';
-  if (play.isTouchdown) {
-    colorAnalysis = `That puts ${state.possession === 'home' ? state.homeTeam.name : state.awayTeam.name} on the board with a touchdown.`;
-  } else if (play.turnover) {
-    colorAnalysis = 'That turnover could be a game-changer. Momentum shifts.';
-  } else if (play.type === 'sack') {
-    colorAnalysis = 'The pass rush gets home. That will bring up a longer down and distance.';
-  } else if (play.isFirstDown) {
-    colorAnalysis = 'Moving the chains. The offense keeps the drive alive.';
-  } else if (play.type === 'punt') {
-    colorAnalysis = 'The offense stalls and has to give the ball back.';
-  } else if (play.scoring && play.scoring.type === 'field_goal') {
-    colorAnalysis = 'Points on the board. Every point matters in a game like this.';
-  } else if (play.scoring && play.scoring.type === 'safety') {
-    colorAnalysis = 'A safety! Two points for the defense and they get the ball back.';
-  } else if (play.yardsGained >= 15) {
-    colorAnalysis = 'A chunk play that moves them into better territory.';
-  } else if (play.yardsGained <= 0 && play.type !== 'pass_incomplete') {
-    colorAnalysis = 'No gain on that play. The defense did its job.';
-  } else {
-    colorAnalysis = `${state.down === 3 ? 'A crucial third down coming up.' : 'Standard play from the offense.'}`;
-  }
+  // Get the best template for this play type + excitement + situation
+  const template = getTemplate(play, state, excitement, rng);
+  const vars = buildTemplateVars(play, state);
+  const filled = fillTemplate(template, vars);
 
   return {
-    playByPlay,
-    colorAnalysis,
-    crowdReaction,
+    playByPlay: filled.playByPlay,
+    colorAnalysis: filled.colorAnalysis,
+    crowdReaction: filled.crowdReaction || crowdReaction,
     excitement,
   };
 }
@@ -244,8 +233,8 @@ function calculatePlayDelay(
   let delay: number;
 
   if (clockUpdate?.isClockRunning && play.clockElapsed && play.clockElapsed > 0) {
-    // Clock is running: compress game clock to ~35% of real time for 25-35 min games
-    delay = play.clockElapsed * 350;
+    // Clock is running: compress game clock to ~18% for fast-paced 15-20 min games
+    delay = play.clockElapsed * 180;
   } else if (drama.isTwoMinuteDrill) {
     // Hurry-up / two-minute drill: faster play clock
     delay = REALTIME_TWO_MINUTE_PLAY_CLOCK_MS;
@@ -566,7 +555,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
             isDominatingPerformance: null,
           };
 
-          const commentary = buildTemplateCommentary(playResult, state, excitement, crowdReaction);
+          const commentary = buildRichCommentary(playResult, state, excitement, crowdReaction, rng);
           const delay = calculatePlayDelay(playResult, state, drama, false, false, clockUpdate);
           timestamp += delay;
 
@@ -1088,7 +1077,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
 
     // --- (l) Generate commentary ---
     const crowdReaction = getReactionFromExcitement(excitement, playResult, state.possession);
-    const commentary = buildTemplateCommentary(playResult, state, excitement, crowdReaction);
+    const commentary = buildRichCommentary(playResult, state, excitement, crowdReaction, rng);
 
     // --- (m) Calculate playback timestamp ---
     const isQuarterChange = state.quarter !== prevQuarter;

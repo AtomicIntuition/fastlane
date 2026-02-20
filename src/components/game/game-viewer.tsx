@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { NarrativeSnapshot } from '@/lib/simulation/types';
+import type { NarrativeSnapshot, GameState } from '@/lib/simulation/types';
 import { useGameStream } from '@/hooks/use-game-stream';
 import { useMomentum } from '@/hooks/use-momentum';
 import { useCountdown } from '@/hooks/use-countdown';
@@ -106,8 +106,8 @@ export function GameViewer({ gameId }: GameViewerProps) {
     if (isHalftimeNow) {
       halftimeShownRef.current = true;
       setShowHalftime(true);
-      // Auto-dismiss after 40 seconds (halftime is 45s total, leave 5s buffer)
-      const timer = setTimeout(() => setShowHalftime(false), 40_000);
+      // Auto-dismiss after 18 seconds (halftime is 20s total, leave 2s buffer)
+      const timer = setTimeout(() => setShowHalftime(false), 18_000);
       return () => clearTimeout(timer);
     }
   }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -218,6 +218,9 @@ export function GameViewer({ gameId }: GameViewerProps) {
           narrativeContext={currentEvent?.narrativeContext ?? null}
         />
 
+        {/* Possession strip — immediately visible who has the ball */}
+        <PossessionStrip gameState={gameState} />
+
         <MomentumMeter
           momentum={momentum}
           homeColor={gameState.homeTeam.primaryColor}
@@ -291,6 +294,47 @@ function GameNav() {
       >
         Schedule
       </Link>
+    </div>
+  );
+}
+
+// ── Possession Strip ──────────────────────────────────────────
+
+function PossessionStrip({ gameState }: { gameState: GameState }) {
+  const team = gameState.possession === 'home' ? gameState.homeTeam : gameState.awayTeam;
+  const { down, yardsToGo, ballPosition, kickoff, patAttempt, isHalftime } = gameState;
+
+  if (isHalftime) return null;
+
+  let situation = '';
+  if (kickoff) {
+    situation = 'KICKOFF';
+  } else if (patAttempt) {
+    situation = 'EXTRA POINT';
+  } else {
+    const suffix = down === 1 ? 'st' : down === 2 ? 'nd' : down === 3 ? 'rd' : 'th';
+    situation = `${down}${suffix} & ${yardsToGo}`;
+  }
+
+  return (
+    <div
+      className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06]"
+      style={{ backgroundColor: `${team.primaryColor}15`, borderLeftWidth: '3px', borderLeftColor: team.primaryColor }}
+    >
+      <div className="flex items-center gap-2">
+        <img
+          src={getTeamLogoUrl(team.abbreviation)}
+          alt=""
+          className="w-5 h-5 object-contain"
+        />
+        <span className="text-xs font-black" style={{ color: team.primaryColor }}>
+          {team.abbreviation}
+        </span>
+        <span className="text-[10px] font-bold text-text-muted">has the ball</span>
+      </div>
+      <span className="text-xs font-black text-text-primary tracking-wide">
+        {situation}
+      </span>
     </div>
   );
 }
@@ -795,7 +839,7 @@ function HalftimeReport({
   awayScore: number;
   onDismiss: () => void;
 }) {
-  const [countdown, setCountdown] = useState(40);
+  const [countdown, setCountdown] = useState(18);
 
   useEffect(() => {
     const timer = setInterval(() => {

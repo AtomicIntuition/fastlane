@@ -99,19 +99,27 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
               />
               {possession === 'away' && (
                 <div
-                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: awayTeam.primaryColor, boxShadow: `0 0 6px ${awayTeam.primaryColor}` }}
-                />
+                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5"
+                >
+                  <span className="text-[8px] font-black tracking-widest uppercase" style={{ color: awayTeam.primaryColor, textShadow: `0 0 8px ${awayTeam.primaryColor}` }}>
+                    POSS
+                  </span>
+                </div>
               )}
             </div>
             <div className="flex flex-col">
-              <span
-                className={`text-lg font-black tracking-wide leading-tight ${
-                  possession === 'away' ? 'text-text-primary' : 'text-text-secondary'
-                }`}
-              >
-                {awayTeam.abbreviation}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {possession === 'away' && (
+                  <PossessionArrow color={awayTeam.primaryColor} />
+                )}
+                <span
+                  className={`text-lg font-black tracking-wide leading-tight ${
+                    possession === 'away' ? 'text-text-primary' : 'text-text-secondary'
+                  }`}
+                >
+                  {awayTeam.abbreviation}
+                </span>
+              </div>
               <TimeoutDots remaining={awayTimeouts} color={awayTeam.primaryColor} />
             </div>
             <span
@@ -148,13 +156,18 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
               {homeScore}
             </span>
             <div className="flex flex-col items-end">
-              <span
-                className={`text-lg font-black tracking-wide leading-tight ${
-                  possession === 'home' ? 'text-text-primary' : 'text-text-secondary'
-                }`}
-              >
-                {homeTeam.abbreviation}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className={`text-lg font-black tracking-wide leading-tight ${
+                    possession === 'home' ? 'text-text-primary' : 'text-text-secondary'
+                  }`}
+                >
+                  {homeTeam.abbreviation}
+                </span>
+                {possession === 'home' && (
+                  <PossessionArrow color={homeTeam.primaryColor} direction="left" />
+                )}
+              </div>
               <TimeoutDots remaining={homeTimeouts} color={homeTeam.primaryColor} />
             </div>
             <div className="relative">
@@ -165,9 +178,12 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
               />
               {possession === 'home' && (
                 <div
-                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full"
-                  style={{ backgroundColor: homeTeam.primaryColor, boxShadow: `0 0 6px ${homeTeam.primaryColor}` }}
-                />
+                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5"
+                >
+                  <span className="text-[8px] font-black tracking-widest uppercase" style={{ color: homeTeam.primaryColor, textShadow: `0 0 8px ${homeTeam.primaryColor}` }}>
+                    POSS
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -201,20 +217,19 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
                 alt=""
                 className="w-9 h-9 flex-shrink-0 object-contain drop-shadow-lg"
               />
-              {possession === 'away' && (
-                <div
-                  className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
-                  style={{ backgroundColor: awayTeam.primaryColor, boxShadow: `0 0 4px ${awayTeam.primaryColor}` }}
-                />
-              )}
             </div>
-            <span
-              className={`text-sm font-black tracking-wide ${
-                possession === 'away' ? 'text-text-primary' : 'text-text-secondary'
-              }`}
-            >
-              {awayTeam.abbreviation}
-            </span>
+            <div className="flex items-center gap-1">
+              {possession === 'away' && (
+                <PossessionArrow color={awayTeam.primaryColor} size="sm" />
+              )}
+              <span
+                className={`text-sm font-black tracking-wide ${
+                  possession === 'away' ? 'text-text-primary' : 'text-text-secondary'
+                }`}
+              >
+                {awayTeam.abbreviation}
+              </span>
+            </div>
             <span
               className={`font-mono text-3xl font-black tabular-nums ml-auto ${
                 awayScoreAnim ? 'score-update text-gold' : awayLeading ? 'text-text-primary' : 'text-text-secondary'
@@ -248,25 +263,24 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
             >
               {homeScore}
             </span>
-            <span
-              className={`text-sm font-black tracking-wide ${
-                possession === 'home' ? 'text-text-primary' : 'text-text-secondary'
-              }`}
-            >
-              {homeTeam.abbreviation}
-            </span>
+            <div className="flex items-center gap-1">
+              <span
+                className={`text-sm font-black tracking-wide ${
+                  possession === 'home' ? 'text-text-primary' : 'text-text-secondary'
+                }`}
+              >
+                {homeTeam.abbreviation}
+              </span>
+              {possession === 'home' && (
+                <PossessionArrow color={homeTeam.primaryColor} size="sm" direction="left" />
+              )}
+            </div>
             <div className="relative">
               <img
                 src={getTeamScoreboardLogoUrl(homeTeam.abbreviation)}
                 alt=""
                 className="w-9 h-9 flex-shrink-0 object-contain drop-shadow-lg"
               />
-              {possession === 'home' && (
-                <div
-                  className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
-                  style={{ backgroundColor: homeTeam.primaryColor, boxShadow: `0 0 4px ${homeTeam.primaryColor}` }}
-                />
-              )}
             </div>
           </div>
         </div>
@@ -291,6 +305,34 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+function PossessionArrow({
+  color,
+  size = 'md',
+  direction = 'right',
+}: {
+  color: string;
+  size?: 'sm' | 'md';
+  direction?: 'left' | 'right';
+}) {
+  const dim = size === 'sm' ? 10 : 14;
+  return (
+    <svg
+      width={dim}
+      height={dim}
+      viewBox="0 0 14 14"
+      className="flex-shrink-0"
+      style={{ filter: `drop-shadow(0 0 4px ${color})`, transform: direction === 'left' ? 'scaleX(-1)' : undefined }}
+    >
+      {/* Small football icon */}
+      <ellipse cx="7" cy="7" rx="6" ry="4" fill={color} opacity="0.9" />
+      <line x1="4.5" y1="7" x2="9.5" y2="7" stroke="white" strokeWidth="0.8" opacity="0.8" />
+      <line x1="5.5" y1="5.5" x2="5.5" y2="8.5" stroke="white" strokeWidth="0.5" opacity="0.7" />
+      <line x1="7" y1="5" x2="7" y2="9" stroke="white" strokeWidth="0.5" opacity="0.7" />
+      <line x1="8.5" y1="5.5" x2="8.5" y2="8.5" stroke="white" strokeWidth="0.5" opacity="0.7" />
+    </svg>
   );
 }
 
