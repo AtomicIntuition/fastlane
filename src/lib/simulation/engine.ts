@@ -241,8 +241,8 @@ function calculatePlayDelay(
   let delay: number;
 
   if (clockUpdate?.isClockRunning && play.clockElapsed && play.clockElapsed > 0) {
-    // Clock is running: real seconds of game clock consumed → real ms
-    delay = play.clockElapsed * 1000;
+    // Clock is running: compress game clock to ~35% of real time for 25-35 min games
+    delay = play.clockElapsed * 350;
   } else if (drama.isTwoMinuteDrill) {
     // Hurry-up / two-minute drill: faster play clock
     delay = REALTIME_TWO_MINUTE_PLAY_CLOCK_MS;
@@ -324,10 +324,108 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
   let state = { ...initialState };
   let overtimeState: OvertimeState | null = null;
 
+  // ========================================================================
+  // 3b. PREGAME EVENTS (intro + coin toss)
+  // ========================================================================
+  // Coin toss determines who receives the opening kickoff.
+  const coinTossWinnerReceives: PossessionTeam = rng.probability(0.5) ? 'home' : 'away';
+  // The losing team kicks off (has "possession" during kickoff).
+  const openingKicker: PossessionTeam = coinTossWinnerReceives === 'home' ? 'away' : 'home';
+  state.possession = openingKicker;
+
   // Track which team received the opening kickoff to determine 2nd half.
-  // The home team kicks off first, so the away team is the opening receiver.
-  // At halftime, the opening receiver kicks off the second half.
-  const openingKickReceiver: PossessionTeam = 'away';
+  const openingKickReceiver: PossessionTeam = coinTossWinnerReceives;
+
+  // Pregame intro event
+  const pregameIntro: GameEvent = {
+    eventNumber: 1,
+    playResult: {
+      type: 'pregame',
+      call: 'kickoff',
+      description: `Welcome to ${config.homeTeam.city}! The ${config.awayTeam.name} visit the ${config.homeTeam.name} in this ${config.gameType === 'regular' ? 'regular season' : config.gameType.replace('_', ' ')} matchup.`,
+      yardsGained: 0,
+      passer: null,
+      rusher: null,
+      receiver: null,
+      defender: null,
+      turnover: null,
+      penalty: null,
+      injury: null,
+      scoring: null,
+      clockElapsed: 0,
+      isClockStopped: true,
+      isFirstDown: false,
+      isTouchdown: false,
+      isSafety: false,
+    },
+    commentary: {
+      playByPlay: `Welcome to ${config.homeTeam.city}! The ${config.awayTeam.name} visit the ${config.homeTeam.name}.`,
+      colorAnalysis: `It's a beautiful day for football. Both teams are ready to compete.`,
+      crowdReaction: 'cheer',
+      excitement: 40,
+    },
+    gameState: { ...state },
+    narrativeContext: {
+      momentum: 0,
+      excitement: 40,
+      activeThreads: [],
+      isComebackBrewing: false,
+      isClutchMoment: false,
+      isBlowout: false,
+      isDominatingPerformance: null,
+    },
+    timestamp: 0,
+    driveNumber: 0,
+  };
+  events.push(pregameIntro);
+  timestamp = 8000; // 8s for intro
+
+  // Coin toss event
+  const winningTeamName = coinTossWinnerReceives === 'home'
+    ? config.homeTeam.name
+    : config.awayTeam.name;
+  const coinTossEvent: GameEvent = {
+    eventNumber: 2,
+    playResult: {
+      type: 'coin_toss',
+      call: 'kickoff',
+      description: `${winningTeamName} wins the toss and will receive the opening kickoff.`,
+      yardsGained: 0,
+      passer: null,
+      rusher: null,
+      receiver: null,
+      defender: null,
+      turnover: null,
+      penalty: null,
+      injury: null,
+      scoring: null,
+      clockElapsed: 0,
+      isClockStopped: true,
+      isFirstDown: false,
+      isTouchdown: false,
+      isSafety: false,
+    },
+    commentary: {
+      playByPlay: `${winningTeamName} wins the toss and elects to receive.`,
+      colorAnalysis: `We're about ready to kick this one off.`,
+      crowdReaction: 'cheer',
+      excitement: 45,
+    },
+    gameState: { ...state },
+    narrativeContext: {
+      momentum: 0,
+      excitement: 45,
+      activeThreads: [],
+      isComebackBrewing: false,
+      isClutchMoment: false,
+      isBlowout: false,
+      isDominatingPerformance: null,
+    },
+    timestamp,
+    driveNumber: 0,
+  };
+  events.push(coinTossEvent);
+  timestamp += 5000; // 5s for coin toss
 
   // ========================================================================
   // 4. MAIN GAME LOOP

@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 interface BallMarkerProps {
   /** Absolute field percentage 0-100 (0 = left/away endzone, 100 = right/home endzone) */
   leftPercent: number;
+  /** Vertical position as percentage (default 50 = centered) */
+  topPercent?: number;
   /** Direction of last play: 'left' | 'right' | null */
   direction: 'left' | 'right' | null;
   /** Whether a kick is in the air (punt/kickoff/FG) */
@@ -15,9 +17,11 @@ interface BallMarkerProps {
  * Football-shaped SVG ball marker with golden glow, shadow,
  * smooth CSS transitions, and directional tilt.
  */
-export function BallMarker({ leftPercent, direction, isKicking }: BallMarkerProps) {
+export function BallMarker({ leftPercent, topPercent = 50, direction, isKicking }: BallMarkerProps) {
   const [launching, setLaunching] = useState(false);
+  const [snap, setSnap] = useState(false);
   const prevKicking = useRef(false);
+  const prevLeft = useRef(leftPercent);
 
   useEffect(() => {
     if (isKicking && !prevKicking.current) {
@@ -28,15 +32,26 @@ export function BallMarker({ leftPercent, direction, isKicking }: BallMarkerProp
     prevKicking.current = isKicking;
   }, [isKicking]);
 
+  // Trigger snap bounce on ball movement
+  useEffect(() => {
+    if (Math.abs(leftPercent - prevLeft.current) > 0.5) {
+      setSnap(true);
+      const timer = setTimeout(() => setSnap(false), 300);
+      prevLeft.current = leftPercent;
+      return () => clearTimeout(timer);
+    }
+  }, [leftPercent]);
+
   const tiltDeg = direction === 'right' ? -15 : direction === 'left' ? 15 : 0;
 
   return (
     <div
-      className="absolute top-1/2 z-20 pointer-events-none"
+      className="absolute z-20 pointer-events-none"
       style={{
         left: `${leftPercent}%`,
-        transition: 'left 600ms cubic-bezier(0.34, 1.56, 0.64, 1)',
-        transform: 'translate(-50%, -50%)',
+        top: `${topPercent}%`,
+        transition: 'left 600ms cubic-bezier(0.34, 1.56, 0.64, 1), top 400ms ease-out',
+        transform: `translate(-50%, -50%)${snap ? ' scale(1.15)' : ''}`,
       }}
     >
       {/* Shadow beneath ball */}

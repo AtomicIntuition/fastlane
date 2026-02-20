@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { NarrativeSnapshot } from '@/lib/simulation/types';
@@ -16,6 +16,7 @@ import { FieldVisual } from '@/components/game/field-visual';
 import { MomentumMeter } from '@/components/game/momentum-meter';
 import { BoxScore } from '@/components/game/box-score';
 import { GameOverSummary } from '@/components/game/game-over-summary';
+import { BroadcastMoment } from '@/components/game/broadcast-moment';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -88,6 +89,29 @@ export function GameViewer({ gameId }: GameViewerProps) {
     return gameState.ballPosition;
   }, [events, gameState]);
 
+  // Detect halftime: current quarter is 3 but the last event is still from Q2
+  // or the engine set isHalftime. Show halftime report for 45 seconds.
+  const [showHalftime, setShowHalftime] = useState(false);
+  const halftimeShownRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentEvent || !gameState || halftimeShownRef.current) return;
+
+    // Detect halftime transition: previous event was Q2, current state is Q3
+    const isHalftimeNow =
+      gameState.quarter === 3 &&
+      events.length >= 2 &&
+      events[events.length - 2]?.gameState.quarter === 2;
+
+    if (isHalftimeNow) {
+      halftimeShownRef.current = true;
+      setShowHalftime(true);
+      // Auto-dismiss after 40 seconds (halftime is 45s total, leave 5s buffer)
+      const timer = setTimeout(() => setShowHalftime(false), 40_000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Connecting / Error state ──────────────────────────────
 
   if (status === 'connecting') {
@@ -119,18 +143,12 @@ export function GameViewer({ gameId }: GameViewerProps) {
 
   if (status === 'game_over' && gameState) {
     return (
-      <div className="min-h-dvh">
-        <GameNav />
-        <GameOverSummary
-          homeTeam={gameState.homeTeam}
-          awayTeam={gameState.awayTeam}
-          finalScore={finalScore ?? { home: gameState.homeScore, away: gameState.awayScore }}
-          boxScore={boxScore}
-          mvp={mvp}
-          nextGameCountdown={0}
-        />
-        <NextGamePreview />
-      </div>
+      <GameOverWithRedirect
+        gameState={gameState}
+        finalScore={finalScore}
+        boxScore={boxScore}
+        mvp={mvp}
+      />
     );
   }
 
@@ -208,9 +226,29 @@ export function GameViewer({ gameId }: GameViewerProps) {
           awayAbbrev={gameState.awayTeam.abbreviation}
         />
 
+        {/* Between-play broadcast cards */}
+        <BroadcastMoment
+          currentEvent={currentEvent}
+          previousEvents={events}
+          gameState={gameState}
+          boxScore={activeBoxScore}
+        />
+
         {/* Latest play commentary — always visible on screen */}
         <LatestPlayBanner event={currentEvent} isLive={isLive} />
       </div>
+
+      {/* ── Halftime report overlay ── */}
+      {showHalftime && activeBoxScore && (
+        <HalftimeReport
+          boxScore={activeBoxScore}
+          homeTeam={gameState.homeTeam}
+          awayTeam={gameState.awayTeam}
+          homeScore={gameState.homeScore}
+          awayScore={gameState.awayScore}
+          onDismiss={() => setShowHalftime(false)}
+        />
+      )}
 
       {/* ── Below the fold: naturally scrollable ── */}
       <div className="flex-1">
@@ -268,13 +306,35 @@ function LatestPlayBanner({
 }) {
   if (!event) {
     return (
-      <div className="px-3 py-3 text-center text-text-muted text-sm border-b border-border/30">
-        Waiting for the first play...
+      <div className="px-3 py-4 border-b border-border/30">
+        <div className="flex items-center justify-center gap-3">
+          <div className="w-2 h-2 rounded-full bg-gold animate-pulse" />
+          <span className="text-sm font-semibold text-text-secondary">
+            Broadcast starting shortly...
+          </span>
+          <div className="w-2 h-2 rounded-full bg-gold animate-pulse" />
+        </div>
       </div>
     );
   }
 
   const { playResult, commentary } = event;
+
+  // Pregame and coin toss events get special rendering
+  if (playResult.type === 'pregame' || playResult.type === 'coin_toss') {
+    return (
+      <div className="px-3 py-3 border-b border-border/30 text-center">
+        <p className="text-[13px] sm:text-sm font-semibold text-text-primary leading-snug">
+          {commentary.playByPlay}
+        </p>
+        {commentary.colorAnalysis && (
+          <p className="text-xs italic text-text-secondary leading-snug mt-0.5">
+            {commentary.colorAnalysis}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   // Badge for big plays
   let badge: string | null = null;
@@ -714,6 +774,200 @@ function IntermissionScreen({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ── Halftime Report ──────────────────────────────────────────
+
+function HalftimeReport({
+  boxScore: halftimeBox,
+  homeTeam: home,
+  awayTeam: away,
+  homeScore,
+  awayScore,
+  onDismiss,
+}: {
+  boxScore: import('@/lib/simulation/types').BoxScore;
+  homeTeam: import('@/lib/simulation/types').Team;
+  awayTeam: import('@/lib/simulation/types').Team;
+  homeScore: number;
+  awayScore: number;
+  onDismiss: () => void;
+}) {
+  const [countdown, setCountdown] = useState(40);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          onDismiss();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [onDismiss]);
+
+  // Find top performers
+  const allPlayers = [...halftimeBox.homePlayerStats, ...halftimeBox.awayPlayerStats];
+  const topPasser = allPlayers.filter(p => p.attempts > 0).sort((a, b) => b.passingYards - a.passingYards)[0];
+  const topRusher = allPlayers.filter(p => p.carries > 0).sort((a, b) => b.rushingYards - a.rushingYards)[0];
+  const topReceiver = allPlayers.filter(p => p.receptions > 0).sort((a, b) => b.receivingYards - a.receivingYards)[0];
+
+  return (
+    <div className="px-3 py-4 border-b border-gold/20 bg-gradient-to-b from-gold/5 to-transparent">
+      <div className="max-w-lg mx-auto space-y-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full bg-gold/10 text-gold border border-gold/20">
+              HALFTIME
+            </span>
+          </div>
+          <button
+            onClick={onDismiss}
+            className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
+          >
+            2nd half in {countdown}s
+          </button>
+        </div>
+
+        {/* Score */}
+        <div className="flex items-center justify-center gap-4 py-1">
+          <div className="text-center">
+            <span className="text-xs text-text-muted">{away.abbreviation}</span>
+            <p className="text-xl font-black tabular-nums">{awayScore}</p>
+          </div>
+          <span className="text-xs text-text-muted font-bold">—</span>
+          <div className="text-center">
+            <span className="text-xs text-text-muted">{home.abbreviation}</span>
+            <p className="text-xl font-black tabular-nums">{homeScore}</p>
+          </div>
+        </div>
+
+        {/* Key stats comparison */}
+        <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+          <div>
+            <span className="text-text-muted block">Total Yards</span>
+            <span className="font-bold">{halftimeBox.awayStats.totalYards}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{halftimeBox.homeStats.totalYards}</span>
+          </div>
+          <div>
+            <span className="text-text-muted block">Turnovers</span>
+            <span className="font-bold">{halftimeBox.awayStats.turnovers}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{halftimeBox.homeStats.turnovers}</span>
+          </div>
+          <div>
+            <span className="text-text-muted block">1st Downs</span>
+            <span className="font-bold">{halftimeBox.awayStats.firstDowns}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{halftimeBox.homeStats.firstDowns}</span>
+          </div>
+        </div>
+
+        {/* Top performers */}
+        <div className="space-y-1">
+          <span className="text-[9px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
+          <div className="grid grid-cols-1 gap-0.5 text-[11px]">
+            {topPasser && topPasser.passingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topPasser.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topPasser.completions}/{topPasser.attempts}, {topPasser.passingYards} yds{topPasser.passingTDs > 0 ? `, ${topPasser.passingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+            {topRusher && topRusher.rushingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topRusher.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topRusher.carries} car, {topRusher.rushingYards} yds{topRusher.rushingTDs > 0 ? `, ${topRusher.rushingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+            {topReceiver && topReceiver.receivingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topReceiver.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topReceiver.receptions} rec, {topReceiver.receivingYards} yds{topReceiver.receivingTDs > 0 ? `, ${topReceiver.receivingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Game Over with Auto-Redirect ──────────────────────────────
+
+function GameOverWithRedirect({
+  gameState,
+  finalScore,
+  boxScore: gameOverBoxScore,
+  mvp: gameOverMvp,
+}: {
+  gameState: import('@/lib/simulation/types').GameState;
+  finalScore: { home: number; away: number } | null;
+  boxScore: import('@/lib/simulation/types').BoxScore | null;
+  mvp: import('@/lib/simulation/types').PlayerGameStats | null;
+}) {
+  const router = useRouter();
+  const [countdown, setCountdown] = useState(30);
+  const [cancelled, setCancelled] = useState(false);
+
+  useEffect(() => {
+    if (cancelled) return;
+
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          router.push('/');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [cancelled, router]);
+
+  return (
+    <div className="min-h-dvh">
+      <GameNav />
+      <GameOverSummary
+        homeTeam={gameState.homeTeam}
+        awayTeam={gameState.awayTeam}
+        finalScore={finalScore ?? { home: gameState.homeScore, away: gameState.awayScore }}
+        boxScore={gameOverBoxScore}
+        mvp={gameOverMvp}
+        nextGameCountdown={0}
+      />
+      <NextGamePreview />
+
+      {/* Auto-redirect countdown */}
+      {!cancelled && countdown > 0 && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
+          <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-surface/90 border border-border/50 backdrop-blur-sm shadow-lg">
+            <span className="text-xs text-text-secondary">
+              Returning home in <span className="font-mono font-bold text-text-primary tabular-nums">{countdown}s</span>
+            </span>
+            <button
+              onClick={() => setCancelled(true)}
+              className="text-[10px] font-bold text-gold hover:text-gold-bright transition-colors uppercase tracking-wider"
+            >
+              Stay
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

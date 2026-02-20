@@ -158,18 +158,16 @@ export function FieldVisual({
   const [showCoinFlip, setShowCoinFlip] = useState(false);
   const coinFlipShownRef = useRef(false);
 
+  // Trigger coin flip when we receive a coin_toss event from the engine
   useEffect(() => {
     if (
-      isKickoff &&
-      quarter === 1 &&
-      !lastPlay &&
-      gameStatus === 'live' &&
+      lastPlay?.type === 'coin_toss' &&
       !coinFlipShownRef.current
     ) {
       setShowCoinFlip(true);
       coinFlipShownRef.current = true;
     }
-  }, [isKickoff, quarter, lastPlay, gameStatus]);
+  }, [lastPlay]);
 
   const handleCoinFlipComplete = useCallback(() => {
     setShowCoinFlip(false);
@@ -215,6 +213,32 @@ export function FieldVisual({
 
   const showDriveTrail = !isKickoff && !isPatAttempt && gameStatus === 'live';
 
+  // ── Ball vertical position variety ─────────────────────
+  const ballTopPercent = useMemo(() => {
+    if (!lastPlay) return 50;
+    switch (lastPlay.type) {
+      case 'run':
+        // Run plays vary the ball position slightly
+        return 45 + (lastPlay.yardsGained % 7) * 2; // 45-57%
+      case 'pass_complete':
+      case 'pass_incomplete':
+        // Pass plays: QB drops back then throws downfield
+        return 42 + (Math.abs(lastPlay.yardsGained) % 5) * 3; // 42-54%
+      case 'sack':
+        return 55; // QB pushed back
+      case 'scramble':
+        return 40 + (lastPlay.yardsGained % 6) * 3; // 40-55%
+      case 'kickoff':
+      case 'punt':
+      case 'field_goal':
+      case 'extra_point':
+      case 'touchback':
+        return 50; // Centered for kicks
+      default:
+        return 50;
+    }
+  }, [lastPlay]);
+
   return (
     <div className="w-full px-2 py-2">
       <div
@@ -255,6 +279,7 @@ export function FieldVisual({
           {/* Ball marker */}
           <BallMarker
             leftPercent={ballLeft}
+            topPercent={ballTopPercent}
             direction={ballDirection}
             isKicking={!!isKicking}
           />
@@ -278,10 +303,10 @@ export function FieldVisual({
           />
         </div>
 
-        {/* Coin flip overlay */}
+        {/* Coin flip overlay — the toss winner receives, so it's the opposite of the kicking team */}
         <CoinFlip
           show={showCoinFlip}
-          winningTeam={possession === 'home' ? homeTeam.abbreviation : awayTeam.abbreviation}
+          winningTeam={possession === 'home' ? awayTeam.abbreviation : homeTeam.abbreviation}
           onComplete={handleCoinFlipComplete}
         />
 

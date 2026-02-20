@@ -152,7 +152,9 @@ export type PlayType =
   | 'two_point'
   | 'kneel'
   | 'spike'
-  | 'touchback';
+  | 'touchback'
+  | 'pregame'
+  | 'coin_toss';
 
 /** The offensive play called before the snap. */
 export type PlayCall =
