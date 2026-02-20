@@ -252,10 +252,10 @@ export function FieldVisual({
   }, []);
 
   return (
-    <div className="w-full px-2 py-2">
+    <div className="w-full h-full px-1.5 py-1">
       <div
         ref={containerRef}
-        className="field-container relative w-full h-[240px] sm:h-[320px] lg:h-[400px] xl:h-[440px] rounded-xl overflow-hidden border border-white/10"
+        className="field-container relative w-full h-full rounded-xl overflow-hidden border border-white/10"
         role="img"
         aria-label={`Football field. Ball at the ${ballPosition} yard line. ${down}${
           down === 1 ? 'st' : down === 2 ? 'nd' : down === 3 ? 'rd' : 'th'

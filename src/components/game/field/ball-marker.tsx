@@ -16,23 +16,12 @@ interface BallMarkerProps {
 }
 
 /**
- * Football-shaped SVG ball marker with golden glow, shadow,
- * smooth CSS transitions, and directional tilt.
+ * Small, clean football marker — shows ball position between plays.
+ * No big SVG or golden glow. Just a simple football-shaped dot.
  */
 export function BallMarker({ leftPercent, topPercent = 50, direction, isKicking, hidden = false }: BallMarkerProps) {
-  const [launching, setLaunching] = useState(false);
   const [snap, setSnap] = useState(false);
-  const prevKicking = useRef(false);
   const prevLeft = useRef(leftPercent);
-
-  useEffect(() => {
-    if (isKicking && !prevKicking.current) {
-      setLaunching(true);
-      const timer = setTimeout(() => setLaunching(false), 1500);
-      return () => clearTimeout(timer);
-    }
-    prevKicking.current = isKicking;
-  }, [isKicking]);
 
   // Trigger snap bounce on ball movement
   useEffect(() => {
@@ -44,7 +33,7 @@ export function BallMarker({ leftPercent, topPercent = 50, direction, isKicking,
     }
   }, [leftPercent]);
 
-  const tiltDeg = direction === 'right' ? -15 : direction === 'left' ? 15 : 0;
+  const tiltDeg = direction === 'right' ? -20 : direction === 'left' ? 20 : 0;
 
   return (
     <div
@@ -55,73 +44,36 @@ export function BallMarker({ leftPercent, topPercent = 50, direction, isKicking,
         transition: hidden
           ? 'opacity 150ms ease-out'
           : 'left 600ms cubic-bezier(0.34, 1.56, 0.64, 1), top 400ms ease-out, opacity 200ms ease-in',
-        transform: `translate(-50%, -50%)${snap ? ' scale(1.15)' : ''}`,
+        transform: `translate(-50%, -50%)${snap ? ' scale(1.2)' : ''}`,
         opacity: hidden ? 0 : 1,
       }}
     >
-      {/* Shadow beneath ball */}
+      {/* Simple football shape */}
       <div
-        className="absolute left-1/2 -translate-x-1/2 rounded-full"
         style={{
-          bottom: '-4px',
-          width: '20px',
-          height: '6px',
-          background: 'rgba(0,0,0,0.4)',
-          filter: 'blur(3px)',
-        }}
-      />
-
-      {/* Football SVG */}
-      <div
-        className={launching ? 'ball-launch-anim' : ''}
-        style={{
+          width: 16,
+          height: 10,
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #A0522D 0%, #8B4513 50%, #6B3410 100%)',
+          border: '1px solid #5C2D06',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.5)',
           transform: `rotate(${tiltDeg}deg)`,
           transition: 'transform 400ms ease-out',
-          filter: 'drop-shadow(0 0 8px rgba(212, 175, 55, 0.6)) drop-shadow(0 0 16px rgba(212, 175, 55, 0.3))',
+          position: 'relative',
         }}
       >
-        <svg
-          width="32"
-          height="20"
-          viewBox="0 0 32 20"
-          className="w-6 h-4 sm:w-8 sm:h-5 lg:w-10 lg:h-6"
-          aria-label="Football"
-        >
-          {/* Ball body */}
-          <ellipse
-            cx="16"
-            cy="10"
-            rx="14"
-            ry="8"
-            fill="#8B4513"
-            stroke="#5C2D06"
-            strokeWidth="1"
-          />
-          {/* Darker brown gradient overlay */}
-          <ellipse
-            cx="16"
-            cy="10"
-            rx="14"
-            ry="8"
-            fill="url(#football-gradient)"
-          />
-          {/* White lacing - center stripe */}
-          <line x1="10" y1="10" x2="22" y2="10" stroke="white" strokeWidth="1.2" opacity="0.9" />
-          {/* Lace crosses */}
-          <line x1="12" y1="7.5" x2="12" y2="12.5" stroke="white" strokeWidth="0.8" opacity="0.8" />
-          <line x1="14.5" y1="7" x2="14.5" y2="13" stroke="white" strokeWidth="0.8" opacity="0.8" />
-          <line x1="17.5" y1="7" x2="17.5" y2="13" stroke="white" strokeWidth="0.8" opacity="0.8" />
-          <line x1="20" y1="7.5" x2="20" y2="12.5" stroke="white" strokeWidth="0.8" opacity="0.8" />
-          {/* Specular highlight */}
-          <ellipse cx="14" cy="7" rx="6" ry="3" fill="white" opacity="0.1" />
-          <defs>
-            <linearGradient id="football-gradient" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#A0522D" stopOpacity="0.4" />
-              <stop offset="50%" stopColor="#8B4513" stopOpacity="0" />
-              <stop offset="100%" stopColor="#3E1A00" stopOpacity="0.5" />
-            </linearGradient>
-          </defs>
-        </svg>
+        {/* Lace */}
+        <div
+          style={{
+            position: 'absolute',
+            top: '50%',
+            left: '25%',
+            right: '25%',
+            height: 1,
+            background: 'rgba(255,255,255,0.7)',
+            transform: 'translateY(-50%)',
+          }}
+        />
       </div>
     </div>
   );

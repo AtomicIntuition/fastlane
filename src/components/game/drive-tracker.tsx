@@ -20,6 +20,8 @@ interface DriveTrackerProps {
   teamColor: string;
   /** First down line position (0-100, yards from own goal line). */
   firstDownLine: number;
+  /** Compact mode — no Card wrapper, smaller */
+  compact?: boolean;
 }
 
 // ── Helpers ──────────────────────────────────────────────────
@@ -40,6 +42,7 @@ export function DriveTracker({
   timeElapsed,
   teamColor,
   firstDownLine,
+  compact = false,
 }: DriveTrackerProps) {
   // Clamp positions to 0-100
   const clampedStart = Math.max(0, Math.min(100, startPosition));
@@ -66,32 +69,34 @@ export function DriveTracker({
   // Yard line labels for the compact field
   const yardMarkers = [10, 20, 30, 40, 50, 60, 70, 80, 90];
 
-  return (
-    <Card variant="glass" padding="sm" className="overflow-hidden">
+  const barHeight = compact ? 'h-4' : 'h-6';
+
+  const content = (
+    <>
       {/* Drive stats header */}
-      <div className="flex items-center justify-between mb-2">
+      <div className={`flex items-center justify-between ${compact ? 'mb-1' : 'mb-2'}`}>
         <div className="flex items-center gap-2">
           <div
             className="w-2 h-2 rounded-full flex-shrink-0"
             style={{ backgroundColor: teamColor }}
           />
-          <span className="text-[11px] font-bold uppercase tracking-wider text-text-primary">
+          <span className={`${compact ? 'text-[10px]' : 'text-[11px]'} font-bold uppercase tracking-wider text-text-primary`}>
             Current Drive
           </span>
         </div>
-        <div className="flex items-center gap-3 text-[10px] text-text-muted font-mono tabular-nums">
+        <div className={`flex items-center gap-3 ${compact ? 'text-[9px]' : 'text-[10px]'} text-text-muted font-mono tabular-nums`}>
           <span>
             <span className="text-text-secondary font-semibold">{plays}</span> plays
           </span>
           <span>
             <span className="text-text-secondary font-semibold">{yards}</span> yds
           </span>
-          <span>{formatDriveTime(timeElapsed)}</span>
+          {!compact && <span>{formatDriveTime(timeElapsed)}</span>}
         </div>
       </div>
 
       {/* Field bar */}
-      <div className="relative w-full h-6 rounded bg-surface-elevated overflow-hidden">
+      <div className={`relative w-full ${barHeight} rounded bg-surface-elevated overflow-hidden`}>
         {/* Yard line markers */}
         {yardMarkers.map((yd) => (
           <div
@@ -106,8 +111,7 @@ export function DriveTracker({
         ))}
 
         {/* Yard numbers */}
-        {[10, 20, 30, 40, 50].map((yd, i) => {
-          // Mirror: 10 20 30 40 50 40 30 20 10
+        {!compact && [10, 20, 30, 40, 50].map((yd, i) => {
           const displayNum = yd;
           return (
             <span
@@ -158,15 +162,14 @@ export function DriveTracker({
               transform: 'translateX(-50%)',
             }}
           >
-            {/* First down label */}
-            <span
-              className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[7px] font-bold"
-              style={{
-                color: pastFirstDown ? '#22c55e' : '#fbbf24',
-              }}
-            >
-              1st
-            </span>
+            {!compact && (
+              <span
+                className="absolute -top-0.5 left-1/2 -translate-x-1/2 text-[7px] font-bold"
+                style={{ color: pastFirstDown ? '#22c55e' : '#fbbf24' }}
+              >
+                1st
+              </span>
+            )}
           </div>
         )}
 
@@ -176,7 +179,7 @@ export function DriveTracker({
           style={{ left: `${progressData.currentPct}%` }}
         >
           <div
-            className="w-3 h-3 rounded-full border-2 border-white"
+            className={`${compact ? 'w-2.5 h-2.5' : 'w-3 h-3'} rounded-full border-2 border-white`}
             style={{
               backgroundColor: teamColor,
               boxShadow: `0 0 6px ${teamColor}80, 0 0 12px ${teamColor}40`,
@@ -186,14 +189,30 @@ export function DriveTracker({
       </div>
 
       {/* End zone labels */}
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-[8px] text-text-muted font-semibold tracking-wide">
-          OWN
-        </span>
-        <span className="text-[8px] text-text-muted font-semibold tracking-wide">
-          OPP
-        </span>
+      {!compact && (
+        <div className="flex items-center justify-between mt-1">
+          <span className="text-[8px] text-text-muted font-semibold tracking-wide">
+            OWN
+          </span>
+          <span className="text-[8px] text-text-muted font-semibold tracking-wide">
+            OPP
+          </span>
+        </div>
+      )}
+    </>
+  );
+
+  if (compact) {
+    return (
+      <div className="px-3 py-1.5 border-t border-white/[0.06]">
+        {content}
       </div>
+    );
+  }
+
+  return (
+    <Card variant="glass" padding="sm" className="overflow-hidden">
+      {content}
     </Card>
   );
 }

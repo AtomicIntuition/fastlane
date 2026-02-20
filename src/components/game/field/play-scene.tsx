@@ -27,7 +27,7 @@ const RESULT_MS = 600;
 const POST_PLAY_MS = 400;
 const TOTAL_MS = PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS + RESULT_MS + POST_PLAY_MS;
 
-type Phase = 'idle' | 'pre_snap' | 'snap' | 'development' | 'result' | 'post_play';
+type Phase = 'idle' | 'huddle' | 'pre_snap' | 'snap' | 'development' | 'result' | 'post_play';
 
 // ── Easing ───────────────────────────────────────────────────
 function easeOutCubic(t: number): number {
@@ -53,7 +53,7 @@ export function PlayScene({
   onAnimating,
   onPhaseChange,
 }: PlaySceneProps) {
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<Phase>('huddle');
   const prevKeyRef = useRef(playKey);
   const animFrameRef = useRef(0);
   const [animProgress, setAnimProgress] = useState(0);
@@ -80,6 +80,36 @@ export function PlayScene({
       lastPlay,
     );
   }, [possession, lastPlay, playKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Huddle dots — players clustered near the ball ───────────
+  const huddleDots = useMemo(() => {
+    const losX = ballLeftPercent;
+    const offDir = possession === 'away' ? -1 : 1;
+    const dots: PlayerDot[] = [];
+    // Offense huddle (cluster behind LOS)
+    for (let i = 0; i < 11; i++) {
+      const angle = (i / 11) * Math.PI * 2;
+      const radius = 2.5 + (i % 3) * 0.8;
+      dots.push({
+        x: losX + offDir * (4 + Math.cos(angle) * radius),
+        y: 50 + Math.sin(angle) * radius * 2.5,
+        role: i === 0 ? 'QB' : '',
+        team: 'offense',
+      });
+    }
+    // Defense huddle (cluster in front of LOS)
+    for (let i = 0; i < 11; i++) {
+      const angle = (i / 11) * Math.PI * 2;
+      const radius = 2.5 + (i % 3) * 0.8;
+      dots.push({
+        x: losX - offDir * (4 + Math.cos(angle) * radius),
+        y: 50 + Math.sin(angle) * radius * 2.5,
+        role: '',
+        team: 'defense',
+      });
+    }
+    return dots;
+  }, [ballLeftPercent, possession]);
 
   // ── Detect new play → start animation ──────────────────────
   const onAnimatingRef = useRef(onAnimating);
@@ -116,7 +146,7 @@ export function PlayScene({
     }, PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS);
     const t4 = setTimeout(() => updatePhase('post_play'), PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS + RESULT_MS);
     const t5 = setTimeout(() => {
-      updatePhase('idle');
+      updatePhase('huddle');
       onAnimatingRef.current(false);
     }, TOTAL_MS);
 
@@ -140,44 +170,44 @@ export function PlayScene({
     animFrameRef.current = requestAnimationFrame(tick);
   }
 
-  // ── Render nothing when idle ───────────────────────────────
-  if (phase === 'idle' || !lastPlay) return null;
+  // ── Always render — huddle between plays, formation during plays ──
+  const isPlaying = phase !== 'huddle';
+  const showFormation = isPlaying && lastPlay;
 
   const fromX = fromToRef.current.from;
   const toX = fromToRef.current.to;
-  const playType = lastPlay.type;
-  const isSuccess = !isFailedPlay(lastPlay);
+  const playType = lastPlay?.type ?? null;
+  const isSuccess = lastPlay ? !isFailedPlay(lastPlay) : true;
   const offDir = possession === 'away' ? -1 : 1;
 
-  const opacity =
-    phase === 'pre_snap' ? 0.85 :
-    phase === 'snap' ? 0.9 :
-    phase === 'development' ? 1 :
-    phase === 'result' ? 0.9 : 0;
+  const opacity = phase === 'post_play' ? 0.85 : 1;
 
   const isRunPlay = playType === 'run' || playType === 'scramble' || playType === 'two_point';
 
   const isPassPlay = playType === 'pass_complete' || playType === 'pass_incomplete' ||
-    lastPlay.call?.startsWith('pass_') || lastPlay.call?.startsWith('play_action') ||
-    lastPlay.call === 'screen_pass' || lastPlay.call === 'pass_rpo';
+    lastPlay?.call?.startsWith('pass_') || lastPlay?.call?.startsWith('play_action') ||
+    lastPlay?.call === 'screen_pass' || lastPlay?.call === 'pass_rpo';
+
+  // Choose which dots to render
+  const activeDots = showFormation ? formation : huddleDots;
 
   return (
     <div
       className="absolute inset-0 pointer-events-none z-10 overflow-hidden"
       style={{
         opacity,
-        transition: phase === 'post_play' ? 'opacity 400ms ease-out' : 'opacity 200ms ease-in',
+        transition: 'opacity 300ms ease-out',
       }}
     >
       {/* ─── SVG layer for trajectory lines (lines don't distort) ─── */}
-      {(phase === 'development' || phase === 'result') && (
+      {showFormation && (phase === 'development' || phase === 'result') && (
         <svg
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           className="absolute inset-0 w-full h-full"
         >
           {/* Route lines for pass plays */}
-          {isPassPlay && (
+          {isPassPlay && lastPlay && (
             <RouteLines
               formation={formation}
               fromX={fromX}
@@ -189,19 +219,21 @@ export function PlayScene({
           )}
 
           {/* Play trajectory trail */}
-          <PlayTrajectory
-            playType={playType}
-            fromX={fromX}
-            toX={toX}
-            possession={possession}
-            progress={animProgress}
-            success={isSuccess}
-          />
+          {playType && (
+            <PlayTrajectory
+              playType={playType}
+              fromX={fromX}
+              toX={toX}
+              possession={possession}
+              progress={animProgress}
+              success={isSuccess}
+            />
+          )}
         </svg>
       )}
 
       {/* ─── HTML layer: player dots (perfectly round, no distortion) ─── */}
-      {formation.map((dot, i) => {
+      {activeDots.map((dot, i) => {
         const isQB = dot.role === 'QB';
         const isOffense = dot.team === 'offense';
 
@@ -209,30 +241,32 @@ export function PlayScene({
         let y = clamp(dot.y, 3, 97);
 
         // Animate during play phases
-        if ((phase === 'snap' || phase === 'development') && isOffense) {
+        if (showFormation && (phase === 'snap' || phase === 'development') && isOffense) {
           if (dot.role === 'OL') {
             x -= offDir * 1.0;
-          } else if (isQB && !lastPlay.call?.startsWith('run_') && phase === 'development') {
+          } else if (isQB && !lastPlay?.call?.startsWith('run_') && phase === 'development') {
             x += offDir * 2 * Math.min(animProgress * 2, 1);
           }
         }
-        if (phase === 'development' && !isOffense) {
+        if (showFormation && phase === 'development' && !isOffense) {
           const convergeFactor = Math.min(animProgress * 0.3, 0.15);
           x += (ballPos.x - x) * convergeFactor;
           y += (ballPos.y - y) * convergeFactor * 0.5;
         }
 
-        const dotSize = isQB ? 12 : 9;
+        const dotSize = isQB ? 16 : 13;
 
         return (
           <div
             key={i}
-            className="absolute play-scene-dot"
+            className="absolute"
             style={{
               left: `${x}%`,
               top: `${y}%`,
               transform: 'translate(-50%, -50%)',
               zIndex: isOffense ? 3 : 1,
+              transition: phase === 'huddle' || phase === 'pre_snap'
+                ? 'left 600ms ease-out, top 600ms ease-out' : undefined,
             }}
           >
             {/* Player dot — perfectly round */}
@@ -242,23 +276,24 @@ export function PlayScene({
                 width: dotSize,
                 height: dotSize,
                 backgroundColor: isOffense ? offenseColor : defenseColor,
-                opacity: isOffense ? 0.9 : 0.45,
+                opacity: isOffense ? 0.9 : 0.5,
                 border: isOffense
-                  ? '1.5px solid rgba(255,255,255,0.8)'
-                  : '1px solid rgba(255,255,255,0.2)',
+                  ? '2px solid rgba(255,255,255,0.8)'
+                  : '1.5px solid rgba(255,255,255,0.25)',
                 boxShadow: isOffense
-                  ? '0 0 4px rgba(0,0,0,0.4)'
-                  : 'none',
+                  ? '0 0 6px rgba(0,0,0,0.5)'
+                  : '0 0 3px rgba(0,0,0,0.3)',
+                transition: 'width 300ms, height 300ms',
               }}
             />
-            {/* Position label */}
-            {(isOffense || dot.isKeyPlayer) && (
+            {/* Position label (only during formation, not huddle) */}
+            {showFormation && (isOffense || dot.isKeyPlayer) && (
               <div
                 className="absolute left-1/2 whitespace-nowrap font-bold"
                 style={{
                   transform: 'translateX(-50%)',
-                  bottom: `${dotSize / 2 + 3}px`,
-                  fontSize: '8px',
+                  bottom: `${dotSize / 2 + 4}px`,
+                  fontSize: '9px',
                   lineHeight: 1,
                   color: 'white',
                   opacity: dot.isKeyPlayer ? 0.9 : 0.5,
@@ -274,7 +309,7 @@ export function PlayScene({
       })}
 
       {/* ─── Ball carrier dot (runs/scrambles) ─── */}
-      {phase === 'development' && isRunPlay && (
+      {showFormation && phase === 'development' && isRunPlay && (
         <div
           className="absolute"
           style={{
@@ -287,8 +322,8 @@ export function PlayScene({
           <div
             className="rounded-full"
             style={{
-              width: 13,
-              height: 13,
+              width: 16,
+              height: 16,
               backgroundColor: offenseColor,
               border: '2px solid white',
               opacity: 0.9,
@@ -299,7 +334,7 @@ export function PlayScene({
       )}
 
       {/* ─── Animated ball (passes, kicks) ─── */}
-      {phase === 'development' && !isRunPlay && (
+      {showFormation && phase === 'development' && !isRunPlay && (
         <div
           className="absolute"
           style={{
@@ -309,24 +344,11 @@ export function PlayScene({
             zIndex: 6,
           }}
         >
-          {/* Glow beneath */}
-          <div
-            className="absolute rounded-full"
-            style={{
-              width: 18,
-              height: 14,
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              background: 'rgba(212, 175, 55, 0.3)',
-              filter: 'blur(4px)',
-            }}
-          />
-          {/* Ball shape */}
+          {/* Ball shape — no glow */}
           <div
             style={{
-              width: 12,
-              height: 8,
+              width: 14,
+              height: 9,
               borderRadius: '50%',
               background: 'linear-gradient(135deg, #A0522D 0%, #8B4513 50%, #6B3410 100%)',
               border: '1px solid #5C2D06',
@@ -351,7 +373,7 @@ export function PlayScene({
       )}
 
       {/* ─── Outcome markers ─── */}
-      {(phase === 'result' || phase === 'post_play') && (
+      {showFormation && (phase === 'result' || phase === 'post_play') && lastPlay && (
         <OutcomeMarker
           lastPlay={lastPlay}
           fromX={fromX}

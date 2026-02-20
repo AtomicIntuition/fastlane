@@ -10,6 +10,8 @@ interface CrowdEnergyProps {
   excitement: number;
   /** Current crowd reaction. */
   crowdReaction: CrowdReaction;
+  /** Compact mode — thin bar, no labels */
+  compact?: boolean;
 }
 
 // ── Constants ────────────────────────────────────────────────
@@ -100,7 +102,7 @@ function getReactionLabel(reaction: CrowdReaction): string {
 
 // ── Component ────────────────────────────────────────────────
 
-export function CrowdEnergy({ excitement, crowdReaction }: CrowdEnergyProps) {
+export function CrowdEnergy({ excitement, crowdReaction, compact = false }: CrowdEnergyProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>(0);
   const lastFrameRef = useRef<number>(0);
@@ -216,6 +218,26 @@ export function CrowdEnergy({ excitement, crowdReaction }: CrowdEnergyProps) {
         : excitement > 25
           ? 'text-yellow-400'
           : 'text-blue-400';
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-1">
+        <span className={`text-[8px] font-black uppercase tracking-widest flex-shrink-0 ${labelColor}`}>
+          {reactionLabel}
+        </span>
+        <div className="relative flex-1 h-5 rounded overflow-hidden bg-surface-elevated/30">
+          <canvas
+            ref={canvasRef}
+            className="w-full h-full"
+            style={{ display: 'block' }}
+          />
+        </div>
+        <span className={`text-[9px] font-mono font-black tabular-nums flex-shrink-0 ${labelColor}`}>
+          {excitement}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="relative">

@@ -16,7 +16,7 @@ import { FieldVisual } from '@/components/game/field-visual';
 import { MomentumMeter } from '@/components/game/momentum-meter';
 import { BoxScore } from '@/components/game/box-score';
 import { GameOverSummary } from '@/components/game/game-over-summary';
-import { BroadcastMoment } from '@/components/game/broadcast-moment';
+// BroadcastMoment removed — field overlay + LiveCommentary cover this
 import { CrowdEnergy } from '@/components/game/crowd-energy';
 import { DriveTracker } from '@/components/game/drive-tracker';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -165,108 +165,109 @@ export function GameViewer({ gameId }: GameViewerProps) {
   const isCatchup = status === 'catchup';
 
   return (
-    <div className="min-h-dvh flex flex-col">
-      {/* ── Sticky header: Nav + ScoreBug ── */}
-      <div className="sticky top-0 z-40 flex-shrink-0">
-        <GameNav />
-        <ScoreBug
-          gameState={gameState}
-          status={status === 'game_over' ? 'game_over' : 'live'}
-        />
-
-        {/* Banners */}
-        {isCatchup && (
-          <div className="bg-info/10 border-b border-info/20 px-3 py-1 text-center">
-            <span className="text-[11px] sm:text-xs text-info font-semibold">
-              Catching up to live...
-            </span>
-          </div>
-        )}
-        {error && status !== 'error' && (
-          <div className="bg-danger/10 border-b border-danger/20 px-3 py-1 flex items-center justify-between">
-            <span className="text-[11px] text-danger font-medium">{error}</span>
-            <button onClick={reconnect} className="text-[10px] text-danger font-bold underline">
-              Retry
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* ── Field + Momentum + Latest Play ── */}
-      <div className="flex-shrink-0">
-        <FieldVisual
-          ballPosition={gameState.ballPosition}
-          firstDownLine={firstDownLine}
-          possession={gameState.possession}
-          homeTeam={{
-            abbreviation: gameState.homeTeam.abbreviation,
-            primaryColor: gameState.homeTeam.primaryColor,
-            secondaryColor: gameState.homeTeam.secondaryColor,
-          }}
-          awayTeam={{
-            abbreviation: gameState.awayTeam.abbreviation,
-            primaryColor: gameState.awayTeam.primaryColor,
-            secondaryColor: gameState.awayTeam.secondaryColor,
-          }}
-          down={gameState.down}
-          yardsToGo={gameState.yardsToGo}
-          quarter={gameState.quarter}
-          clock={gameState.clock}
-          lastPlay={currentEvent?.playResult ?? null}
-          isKickoff={gameState.kickoff}
-          isPatAttempt={gameState.patAttempt}
-          gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
-          driveStartPosition={driveStartPosition}
-          narrativeContext={currentEvent?.narrativeContext ?? null}
-          commentary={currentEvent ? {
-            playByPlay: currentEvent.commentary.playByPlay,
-            crowdReaction: currentEvent.commentary.crowdReaction,
-            excitement: currentEvent.commentary.excitement,
-          } : null}
-        />
-
-        {/* Possession strip — immediately visible who has the ball */}
-        <PossessionStrip gameState={gameState} />
-
-        <MomentumMeter
-          momentum={momentum}
-          homeColor={gameState.homeTeam.primaryColor}
-          awayColor={gameState.awayTeam.primaryColor}
-          homeAbbrev={gameState.homeTeam.abbreviation}
-          awayAbbrev={gameState.awayTeam.abbreviation}
-        />
-
-        {/* Crowd energy visualizer */}
-        {currentEvent && (
-          <CrowdEnergy
-            excitement={currentEvent.commentary.excitement}
-            crowdReaction={currentEvent.commentary.crowdReaction}
+    <div className="flex flex-col">
+      {/* ═══ Live broadcast view — fills exactly one viewport ═══ */}
+      <div className="h-dvh flex flex-col overflow-hidden">
+        {/* ── Top: Nav + ScoreBug ── */}
+        <div className="flex-shrink-0">
+          <GameNav />
+          <ScoreBug
+            gameState={gameState}
+            status={status === 'game_over' ? 'game_over' : 'live'}
           />
-        )}
 
-        {/* Between-play broadcast cards */}
-        <BroadcastMoment
-          currentEvent={currentEvent}
-          previousEvents={events}
-          gameState={gameState}
-          boxScore={activeBoxScore}
-        />
+          {/* Banners */}
+          {isCatchup && (
+            <div className="bg-info/10 border-b border-info/20 px-3 py-0.5 text-center">
+              <span className="text-[10px] text-info font-semibold">
+                Catching up to live...
+              </span>
+            </div>
+          )}
+          {error && status !== 'error' && (
+            <div className="bg-danger/10 border-b border-danger/20 px-3 py-0.5 flex items-center justify-between">
+              <span className="text-[10px] text-danger font-medium">{error}</span>
+              <button onClick={reconnect} className="text-[10px] text-danger font-bold underline">
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
 
-        {/* Drive tracker — shows current drive progress */}
-        {!gameState.kickoff && !gameState.patAttempt && currentEvent && (
-          <DriveTracker
-            startPosition={driveStartPosition}
-            currentPosition={gameState.ballPosition}
-            plays={events.filter(e => e.driveNumber === currentEvent.driveNumber).length}
-            yards={gameState.ballPosition - driveStartPosition}
-            timeElapsed={0}
-            teamColor={(gameState.possession === 'home' ? gameState.homeTeam : gameState.awayTeam).primaryColor}
+        {/* ── Field — fills remaining vertical space ── */}
+        <div className="flex-1 min-h-0">
+          <FieldVisual
+            ballPosition={gameState.ballPosition}
             firstDownLine={firstDownLine}
+            possession={gameState.possession}
+            homeTeam={{
+              abbreviation: gameState.homeTeam.abbreviation,
+              primaryColor: gameState.homeTeam.primaryColor,
+              secondaryColor: gameState.homeTeam.secondaryColor,
+            }}
+            awayTeam={{
+              abbreviation: gameState.awayTeam.abbreviation,
+              primaryColor: gameState.awayTeam.primaryColor,
+              secondaryColor: gameState.awayTeam.secondaryColor,
+            }}
+            down={gameState.down}
+            yardsToGo={gameState.yardsToGo}
+            quarter={gameState.quarter}
+            clock={gameState.clock}
+            lastPlay={currentEvent?.playResult ?? null}
+            isKickoff={gameState.kickoff}
+            isPatAttempt={gameState.patAttempt}
+            gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
+            driveStartPosition={driveStartPosition}
+            narrativeContext={currentEvent?.narrativeContext ?? null}
+            commentary={currentEvent ? {
+              playByPlay: currentEvent.commentary.playByPlay,
+              crowdReaction: currentEvent.commentary.crowdReaction,
+              excitement: currentEvent.commentary.excitement,
+            } : null}
           />
-        )}
+        </div>
 
-        {/* Latest play commentary — always visible on screen */}
-        <LatestPlayBanner event={currentEvent} isLive={isLive} />
+        {/* ── Bottom panel: info + commentary (compact, always visible) ── */}
+        <div className="flex-shrink-0 border-t border-white/[0.06]">
+          {/* Possession strip */}
+          <PossessionStrip gameState={gameState} />
+
+          {/* Momentum meter */}
+          <MomentumMeter
+            momentum={momentum}
+            homeColor={gameState.homeTeam.primaryColor}
+            awayColor={gameState.awayTeam.primaryColor}
+            homeAbbrev={gameState.homeTeam.abbreviation}
+            awayAbbrev={gameState.awayTeam.abbreviation}
+          />
+
+          {/* Crowd energy — compact bar */}
+          {currentEvent && (
+            <CrowdEnergy
+              excitement={currentEvent.commentary.excitement}
+              crowdReaction={currentEvent.commentary.crowdReaction}
+              compact
+            />
+          )}
+
+          {/* Drive tracker — compact */}
+          {!gameState.kickoff && !gameState.patAttempt && currentEvent && (
+            <DriveTracker
+              startPosition={driveStartPosition}
+              currentPosition={gameState.ballPosition}
+              plays={events.filter(e => e.driveNumber === currentEvent.driveNumber).length}
+              yards={gameState.ballPosition - driveStartPosition}
+              timeElapsed={0}
+              teamColor={(gameState.possession === 'home' ? gameState.homeTeam : gameState.awayTeam).primaryColor}
+              firstDownLine={firstDownLine}
+              compact
+            />
+          )}
+
+          {/* Live commentary — color analysis only (play-by-play shown on field overlay) */}
+          <LiveCommentary event={currentEvent} />
+        </div>
       </div>
 
       {/* ── Halftime report overlay ── */}
@@ -281,9 +282,9 @@ export function GameViewer({ gameId }: GameViewerProps) {
         />
       )}
 
-      {/* ── Below the fold: naturally scrollable ── */}
-      <div className="flex-1">
-        {/* Narrative context */}
+      {/* ═══ Below viewport: scrollable detail ═══ */}
+      <div>
+        {/* Narrative context tags */}
         {currentEvent?.narrativeContext && (
           <NarrativeBar narrative={currentEvent.narrativeContext} />
         )}
@@ -367,24 +368,21 @@ function PossessionStrip({ gameState }: { gameState: GameState }) {
   );
 }
 
-// ── Latest Play Banner (above the fold) ──────────────────────
+// ── Live Commentary (compact, below field) ───────────────────
 
-function LatestPlayBanner({
+function LiveCommentary({
   event,
-  isLive,
 }: {
   event: import('@/lib/simulation/types').GameEvent | null;
-  isLive: boolean;
 }) {
   if (!event) {
     return (
-      <div className="px-3 py-4 border-b border-border/30">
-        <div className="flex items-center justify-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-gold animate-pulse" />
-          <span className="text-sm font-semibold text-text-secondary">
+      <div className="px-3 py-1.5 border-t border-white/[0.06] text-center">
+        <div className="flex items-center justify-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+          <span className="text-[11px] text-text-secondary font-medium">
             Broadcast starting shortly...
           </span>
-          <div className="w-2 h-2 rounded-full bg-gold animate-pulse" />
         </div>
       </div>
     );
@@ -392,70 +390,43 @@ function LatestPlayBanner({
 
   const { playResult, commentary } = event;
 
-  // Pregame and coin toss events get special rendering
   if (playResult.type === 'pregame' || playResult.type === 'coin_toss') {
     return (
-      <div className="px-3 py-3 border-b border-border/30 text-center">
-        <p className="text-[13px] sm:text-sm font-semibold text-text-primary leading-snug">
+      <div className="px-3 py-1.5 border-t border-white/[0.06] text-center">
+        <p className="text-[11px] text-text-secondary leading-snug line-clamp-1">
           {commentary.playByPlay}
         </p>
-        {commentary.colorAnalysis && (
-          <p className="text-xs italic text-text-secondary leading-snug mt-0.5">
-            {commentary.colorAnalysis}
-          </p>
-        )}
       </div>
     );
   }
 
   // Badge for big plays
   let badge: string | null = null;
-  let badgeColor = '#2d3548';
-  if (playResult.isTouchdown) { badge = 'TOUCHDOWN'; badgeColor = '#fbbf24'; }
-  else if (playResult.turnover) { badge = 'TURNOVER'; badgeColor = '#ef4444'; }
-  else if (playResult.scoring) { badge = 'SCORE'; badgeColor = '#60a5fa'; }
+  let badgeColor = '';
+  if (playResult.isTouchdown) { badge = 'TD'; badgeColor = '#fbbf24'; }
+  else if (playResult.turnover) { badge = 'TO'; badgeColor = '#ef4444'; }
   else if (playResult.type === 'sack') { badge = 'SACK'; badgeColor = '#f97316'; }
-  else if (playResult.yardsGained >= 15) { badge = 'BIG PLAY'; badgeColor = '#22c55e'; }
+  else if (playResult.yardsGained >= 15) { badge = 'BIG'; badgeColor = '#22c55e'; }
+
+  // Show color analysis here (play-by-play is on the field overlay)
+  // Fall back to play-by-play if no color analysis
+  const text = commentary.colorAnalysis || commentary.playByPlay;
 
   return (
-    <div
-      className="px-3 py-2.5 border-b border-border/30"
-      style={badge ? { borderLeftWidth: '3px', borderLeftColor: badgeColor } : undefined}
-    >
-      {/* Badge + yards */}
-      <div className="flex items-center gap-2 mb-1">
+    <div className="px-3 py-1.5 border-t border-white/[0.06]">
+      <div className="flex items-start gap-2">
         {badge && (
           <span
-            className="text-[9px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded"
+            className="text-[7px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded flex-shrink-0 mt-px"
             style={{ backgroundColor: `${badgeColor}20`, color: badgeColor }}
           >
             {badge}
           </span>
         )}
-        {playResult.yardsGained !== 0 &&
-          playResult.type !== 'kickoff' &&
-          playResult.type !== 'punt' &&
-          playResult.type !== 'extra_point' &&
-          playResult.type !== 'field_goal' && (
-            <span className={`text-xs font-mono font-bold tabular-nums ${
-              playResult.yardsGained > 0 ? 'text-success' : 'text-danger'
-            }`}>
-              {playResult.yardsGained > 0 ? '+' : ''}{playResult.yardsGained} yds
-            </span>
-          )}
-      </div>
-
-      {/* Play-by-play */}
-      <p className="text-[13px] sm:text-sm font-semibold text-text-primary leading-snug">
-        {commentary.playByPlay}
-      </p>
-
-      {/* Color analysis */}
-      {commentary.colorAnalysis && (
-        <p className="text-xs italic text-text-secondary leading-snug mt-0.5 line-clamp-2">
-          {commentary.colorAnalysis}
+        <p className="text-[11px] text-text-secondary leading-snug line-clamp-2 italic">
+          {text}
         </p>
-      )}
+      </div>
     </div>
   );
 }
