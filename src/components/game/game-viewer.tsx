@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { NarrativeSnapshot } from '@/lib/simulation/types';
@@ -208,6 +208,13 @@ export function GameViewer({ gameId }: GameViewerProps) {
             homeAbbrev={gameState.homeTeam.abbreviation}
             awayAbbrev={gameState.awayTeam.abbreviation}
           />
+
+          {/* Collapsible box score */}
+          <BoxScoreDropdown
+            boxScore={activeBoxScore}
+            homeTeam={gameState.homeTeam}
+            awayTeam={gameState.awayTeam}
+          />
         </div>
 
         {/* Play feed fills remaining space */}
@@ -244,63 +251,58 @@ export function GameViewer({ gameId }: GameViewerProps) {
           </div>
         )}
 
-        {/* Main content grid */}
-        <div className="flex-1 min-h-0 grid grid-cols-3 gap-0">
-          {/* Left column: field + momentum + narrative + play feed */}
-          <div className="col-span-2 flex flex-col border-r border-border">
-            <div className="flex-shrink-0">
-              <FieldVisual
-                ballPosition={gameState.ballPosition}
-                firstDownLine={firstDownLine}
-                possession={gameState.possession}
-                homeTeam={{
-                  abbreviation: gameState.homeTeam.abbreviation,
-                  primaryColor: gameState.homeTeam.primaryColor,
-                  secondaryColor: gameState.homeTeam.secondaryColor,
-                }}
-                awayTeam={{
-                  abbreviation: gameState.awayTeam.abbreviation,
-                  primaryColor: gameState.awayTeam.primaryColor,
-                  secondaryColor: gameState.awayTeam.secondaryColor,
-                }}
-                down={gameState.down}
-                yardsToGo={gameState.yardsToGo}
-                quarter={gameState.quarter}
-                clock={gameState.clock}
-                lastPlay={currentEvent?.playResult ?? null}
-                isKickoff={gameState.kickoff}
-                isPatAttempt={gameState.patAttempt}
-                gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
-                driveStartPosition={driveStartPosition}
-                narrativeContext={currentEvent?.narrativeContext ?? null}
-              />
-              <MomentumMeter
-                momentum={momentum}
-                homeColor={gameState.homeTeam.primaryColor}
-                awayColor={gameState.awayTeam.primaryColor}
-                homeAbbrev={gameState.homeTeam.abbreviation}
-                awayAbbrev={gameState.awayTeam.abbreviation}
-              />
+        {/* Full-width content */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="flex-shrink-0">
+            <FieldVisual
+              ballPosition={gameState.ballPosition}
+              firstDownLine={firstDownLine}
+              possession={gameState.possession}
+              homeTeam={{
+                abbreviation: gameState.homeTeam.abbreviation,
+                primaryColor: gameState.homeTeam.primaryColor,
+                secondaryColor: gameState.homeTeam.secondaryColor,
+              }}
+              awayTeam={{
+                abbreviation: gameState.awayTeam.abbreviation,
+                primaryColor: gameState.awayTeam.primaryColor,
+                secondaryColor: gameState.awayTeam.secondaryColor,
+              }}
+              down={gameState.down}
+              yardsToGo={gameState.yardsToGo}
+              quarter={gameState.quarter}
+              clock={gameState.clock}
+              lastPlay={currentEvent?.playResult ?? null}
+              isKickoff={gameState.kickoff}
+              isPatAttempt={gameState.patAttempt}
+              gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
+              driveStartPosition={driveStartPosition}
+              narrativeContext={currentEvent?.narrativeContext ?? null}
+            />
+            <MomentumMeter
+              momentum={momentum}
+              homeColor={gameState.homeTeam.primaryColor}
+              awayColor={gameState.awayTeam.primaryColor}
+              homeAbbrev={gameState.homeTeam.abbreviation}
+              awayAbbrev={gameState.awayTeam.abbreviation}
+            />
 
-              {/* Narrative context */}
-              {currentEvent?.narrativeContext && (
-                <NarrativeBar narrative={currentEvent.narrativeContext} />
-              )}
-            </div>
+            {/* Narrative context */}
+            {currentEvent?.narrativeContext && (
+              <NarrativeBar narrative={currentEvent.narrativeContext} />
+            )}
 
-            {/* Play feed fills remaining space */}
-            <div className="flex-1 min-h-0">
-              <PlayFeed events={events} isLive={isLive} />
-            </div>
-          </div>
-
-          {/* Right column: box score */}
-          <div className="col-span-1 overflow-y-auto">
-            <BoxScore
+            {/* Collapsible box score */}
+            <BoxScoreDropdown
               boxScore={activeBoxScore}
               homeTeam={gameState.homeTeam}
               awayTeam={gameState.awayTeam}
             />
+          </div>
+
+          {/* Play feed fills remaining space */}
+          <div className="flex-1 min-h-0">
+            <PlayFeed events={events} isLive={isLive} />
           </div>
         </div>
       </div>
@@ -328,6 +330,50 @@ function GameNav() {
       >
         Schedule
       </Link>
+    </div>
+  );
+}
+
+// ── Collapsible Box Score Dropdown ────────────────────────────
+
+function BoxScoreDropdown({
+  boxScore: boxScoreData,
+  homeTeam: home,
+  awayTeam: away,
+}: {
+  boxScore: import('@/lib/simulation/types').BoxScore | null;
+  homeTeam: import('@/lib/simulation/types').Team;
+  awayTeam: import('@/lib/simulation/types').Team;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="border-b border-border/50">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between px-4 py-2 hover:bg-surface-hover/50 transition-colors"
+      >
+        <span className="text-[10px] font-black tracking-widest uppercase text-text-muted">
+          Box Score
+        </span>
+        <svg
+          className="w-4 h-4 text-text-muted transition-transform"
+          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          viewBox="0 0 20 20"
+          fill="currentColor"
+        >
+          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+        </svg>
+      </button>
+      {open && (
+        <div className="max-h-[50vh] overflow-y-auto border-t border-border/30">
+          <BoxScore
+            boxScore={boxScoreData}
+            homeTeam={home}
+            awayTeam={away}
+          />
+        </div>
+      )}
     </div>
   );
 }

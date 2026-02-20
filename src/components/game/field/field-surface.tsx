@@ -22,7 +22,7 @@ export function FieldSurface({ homeTeam, awayTeam }: FieldSurfaceProps) {
     <svg
       viewBox="0 0 1200 534"
       className="w-full h-full"
-      preserveAspectRatio="xMidYMid slice"
+      preserveAspectRatio="none"
       aria-hidden="true"
     >
       <defs>
