@@ -167,12 +167,15 @@ function showCurrentGame(data) {
   document.getElementById('home-logo').src = `${ESPN_LOGO_URL}${homeAbbr.toLowerCase()}.png`;
   document.getElementById('away-abbr').textContent = awayAbbr;
   document.getElementById('home-abbr').textContent = homeAbbr;
-  document.getElementById('away-score').textContent = game.awayScore ?? 0;
-  document.getElementById('home-score').textContent = game.homeScore ?? 0;
+
+  // Hide scores during broadcast to avoid spoilers (DB has final score before stream ends)
+  const isLive = game.status === 'broadcasting' || game.status === 'simulating';
+  document.getElementById('away-score').textContent = isLive ? '—' : (game.awayScore ?? 0);
+  document.getElementById('home-score').textContent = isLive ? '—' : (game.homeScore ?? 0);
 
   const statusEl = document.getElementById('game-status');
-  if (game.status === 'broadcasting') {
-    statusEl.textContent = 'LIVE';
+  if (isLive) {
+    statusEl.textContent = 'LIVE — Watch on site for score';
     statusEl.style.color = '#ef4444';
   } else if (game.status === 'completed') {
     statusEl.textContent = 'FINAL';
