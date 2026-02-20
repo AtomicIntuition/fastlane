@@ -265,6 +265,17 @@ export const userScores = pgTable('user_scores', {
   rank: integer('rank'),
 });
 
+// ---- Jumbotron Messages ----
+
+export const jumbotronMessages = pgTable('jumbotron_messages', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  message: text('message').notNull(),
+  type: varchar('type', { length: 30 }).notNull().default('info'),
+  durationSeconds: integer('duration_seconds').notNull().default(30),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
 // ============================================================
 // RELATIONS
 // ============================================================

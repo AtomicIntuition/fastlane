@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import type { PlayResult, PlayType, Formation, DefensivePersonnel } from '@/lib/simulation/types';
-import { OFFENSIVE_FORMATIONS, DEFENSIVE_FORMATIONS } from './formation-layouts';
-import type { FormationPosition } from './formation-layouts';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import type { PlayResult, PlayType } from '@/lib/simulation/types';
+import { getTeamLogoUrl } from '@/lib/utils/team-logos';
 
 interface PlaySceneProps {
   ballLeftPercent: number;
@@ -15,8 +14,10 @@ interface PlaySceneProps {
   playKey: number;
   onAnimating: (animating: boolean) => void;
   onPhaseChange?: (phase: Phase) => void;
-  /** @deprecated No longer needed — HTML/CSS rendering is distortion-free */
-  aspectRatio?: number;
+  /** Team abbreviation for the animated ball logo */
+  teamAbbreviation?: string;
+  /** Team primary color for the animated ball border */
+  teamColor?: string;
 }
 
 // ── Timing ───────────────────────────────────────────────────
@@ -27,7 +28,7 @@ const RESULT_MS = 600;
 const POST_PLAY_MS = 400;
 const TOTAL_MS = PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS + RESULT_MS + POST_PLAY_MS;
 
-type Phase = 'idle' | 'huddle' | 'pre_snap' | 'snap' | 'development' | 'result' | 'post_play';
+type Phase = 'idle' | 'pre_snap' | 'snap' | 'development' | 'result' | 'post_play';
 
 // ── Easing ───────────────────────────────────────────────────
 function easeOutCubic(t: number): number {
@@ -52,8 +53,10 @@ export function PlayScene({
   playKey,
   onAnimating,
   onPhaseChange,
+  teamAbbreviation,
+  teamColor,
 }: PlaySceneProps) {
-  const [phase, setPhase] = useState<Phase>('huddle');
+  const [phase, setPhase] = useState<Phase>('idle');
   const prevKeyRef = useRef(playKey);
   const animFrameRef = useRef(0);
   const [animProgress, setAnimProgress] = useState(0);
@@ -68,48 +71,6 @@ export function PlayScene({
     setPhase(newPhase);
     onPhaseChangeRef.current?.(newPhase);
   }, []);
-
-  // ── Formation dots ─────────────────────────────────────────
-  const formation = useMemo(() => {
-    const losX = fromToRef.current.from;
-    const playType = lastPlay?.type ?? null;
-    return getFormationDots(
-      losX, possession, playType,
-      lastPlay?.formation ?? null,
-      lastPlay?.defensiveCall?.personnel ?? null,
-      lastPlay,
-    );
-  }, [possession, lastPlay, playKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── Huddle dots — players clustered near the ball ───────────
-  const huddleDots = useMemo(() => {
-    const losX = ballLeftPercent;
-    const offDir = possession === 'away' ? -1 : 1;
-    const dots: PlayerDot[] = [];
-    // Offense huddle (cluster behind LOS)
-    for (let i = 0; i < 11; i++) {
-      const angle = (i / 11) * Math.PI * 2;
-      const radius = 2.5 + (i % 3) * 0.8;
-      dots.push({
-        x: losX + offDir * (4 + Math.cos(angle) * radius),
-        y: 50 + Math.sin(angle) * radius * 2.5,
-        role: i === 0 ? 'QB' : '',
-        team: 'offense',
-      });
-    }
-    // Defense huddle (cluster in front of LOS)
-    for (let i = 0; i < 11; i++) {
-      const angle = (i / 11) * Math.PI * 2;
-      const radius = 2.5 + (i % 3) * 0.8;
-      dots.push({
-        x: losX - offDir * (4 + Math.cos(angle) * radius),
-        y: 50 + Math.sin(angle) * radius * 2.5,
-        role: '',
-        team: 'defense',
-      });
-    }
-    return dots;
-  }, [ballLeftPercent, possession]);
 
   // ── Detect new play → start animation ──────────────────────
   const onAnimatingRef = useRef(onAnimating);
@@ -146,7 +107,7 @@ export function PlayScene({
     }, PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS);
     const t4 = setTimeout(() => updatePhase('post_play'), PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS + RESULT_MS);
     const t5 = setTimeout(() => {
-      updatePhase('huddle');
+      updatePhase('idle');
       onAnimatingRef.current(false);
     }, TOTAL_MS);
 
@@ -170,26 +131,16 @@ export function PlayScene({
     animFrameRef.current = requestAnimationFrame(tick);
   }
 
-  // ── Always render — huddle between plays, formation during plays ──
-  const isPlaying = phase !== 'huddle';
-  const showFormation = isPlaying && lastPlay;
+  // ── Render: only during active plays ──────────────────────
+  const isPlaying = phase !== 'idle';
+  if (!isPlaying || !lastPlay) return null;
 
   const fromX = fromToRef.current.from;
   const toX = fromToRef.current.to;
-  const playType = lastPlay?.type ?? null;
-  const isSuccess = lastPlay ? !isFailedPlay(lastPlay) : true;
-  const offDir = possession === 'away' ? -1 : 1;
+  const playType = lastPlay.type;
+  const isSuccess = !isFailedPlay(lastPlay);
 
   const opacity = phase === 'post_play' ? 0.85 : 1;
-
-  const isRunPlay = playType === 'run' || playType === 'scramble' || playType === 'two_point';
-
-  const isPassPlay = playType === 'pass_complete' || playType === 'pass_incomplete' ||
-    lastPlay?.call?.startsWith('pass_') || lastPlay?.call?.startsWith('play_action') ||
-    lastPlay?.call === 'screen_pass' || lastPlay?.call === 'pass_rpo';
-
-  // Choose which dots to render
-  const activeDots = showFormation ? formation : huddleDots;
 
   return (
     <div
@@ -199,142 +150,26 @@ export function PlayScene({
         transition: 'opacity 300ms ease-out',
       }}
     >
-      {/* ─── SVG layer for trajectory lines (lines don't distort) ─── */}
-      {showFormation && (phase === 'development' || phase === 'result') && (
+      {/* ─── SVG layer for trajectory lines ─── */}
+      {(phase === 'development' || phase === 'result') && (
         <svg
           viewBox="0 0 100 100"
           preserveAspectRatio="none"
           className="absolute inset-0 w-full h-full"
         >
-          {/* Route lines for pass plays */}
-          {isPassPlay && lastPlay && (
-            <RouteLines
-              formation={formation}
-              fromX={fromX}
-              offDir={offDir}
-              offenseColor={offenseColor}
-              playCall={lastPlay.call}
-              progress={animProgress}
-            />
-          )}
-
-          {/* Play trajectory trail */}
-          {playType && (
-            <PlayTrajectory
-              playType={playType}
-              fromX={fromX}
-              toX={toX}
-              possession={possession}
-              progress={animProgress}
-              success={isSuccess}
-            />
-          )}
+          <PlayTrajectory
+            playType={playType}
+            fromX={fromX}
+            toX={toX}
+            possession={possession}
+            progress={animProgress}
+            success={isSuccess}
+          />
         </svg>
       )}
 
-      {/* ─── HTML layer: player dots (perfectly round, no distortion) ─── */}
-      {activeDots.map((dot, i) => {
-        const isQB = dot.role === 'QB';
-        const isOffense = dot.team === 'offense';
-
-        let x = clamp(dot.x, 1, 99);
-        let y = clamp(dot.y, 3, 97);
-
-        // Animate during play phases
-        if (showFormation && (phase === 'snap' || phase === 'development') && isOffense) {
-          if (dot.role === 'OL') {
-            x -= offDir * 1.0;
-          } else if (isQB && !lastPlay?.call?.startsWith('run_') && phase === 'development') {
-            x += offDir * 2 * Math.min(animProgress * 2, 1);
-          }
-        }
-        if (showFormation && phase === 'development' && !isOffense) {
-          const convergeFactor = Math.min(animProgress * 0.3, 0.15);
-          x += (ballPos.x - x) * convergeFactor;
-          y += (ballPos.y - y) * convergeFactor * 0.5;
-        }
-
-        const dotSize = isQB ? 16 : 13;
-
-        return (
-          <div
-            key={i}
-            className="absolute"
-            style={{
-              left: `${x}%`,
-              top: `${y}%`,
-              transform: 'translate(-50%, -50%)',
-              zIndex: isOffense ? 3 : 1,
-              transition: phase === 'huddle' || phase === 'pre_snap'
-                ? 'left 600ms ease-out, top 600ms ease-out' : undefined,
-            }}
-          >
-            {/* Player dot — perfectly round */}
-            <div
-              className="rounded-full"
-              style={{
-                width: dotSize,
-                height: dotSize,
-                backgroundColor: isOffense ? offenseColor : defenseColor,
-                opacity: isOffense ? 0.9 : 0.5,
-                border: isOffense
-                  ? '2px solid rgba(255,255,255,0.8)'
-                  : '1.5px solid rgba(255,255,255,0.25)',
-                boxShadow: isOffense
-                  ? '0 0 6px rgba(0,0,0,0.5)'
-                  : '0 0 3px rgba(0,0,0,0.3)',
-                transition: 'width 300ms, height 300ms',
-              }}
-            />
-            {/* Position label (only during formation, not huddle) */}
-            {showFormation && (isOffense || dot.isKeyPlayer) && (
-              <div
-                className="absolute left-1/2 whitespace-nowrap font-bold"
-                style={{
-                  transform: 'translateX(-50%)',
-                  bottom: `${dotSize / 2 + 4}px`,
-                  fontSize: '9px',
-                  lineHeight: 1,
-                  color: 'white',
-                  opacity: dot.isKeyPlayer ? 0.9 : 0.5,
-                  textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6)',
-                  letterSpacing: '0.03em',
-                }}
-              >
-                {dot.isKeyPlayer && dot.number ? `#${dot.number}` : dot.role}
-              </div>
-            )}
-          </div>
-        );
-      })}
-
-      {/* ─── Ball carrier dot (runs/scrambles) ─── */}
-      {showFormation && phase === 'development' && isRunPlay && (
-        <div
-          className="absolute"
-          style={{
-            left: `${clamp(ballPos.x, 2, 98)}%`,
-            top: `${clamp(ballPos.y, 5, 95)}%`,
-            transform: 'translate(-50%, -50%)',
-            zIndex: 5,
-          }}
-        >
-          <div
-            className="rounded-full"
-            style={{
-              width: 16,
-              height: 16,
-              backgroundColor: offenseColor,
-              border: '2px solid white',
-              opacity: 0.9,
-              boxShadow: '0 0 8px rgba(255,255,255,0.3), 0 0 4px rgba(0,0,0,0.5)',
-            }}
-          />
-        </div>
-      )}
-
-      {/* ─── Animated ball (passes, kicks) ─── */}
-      {showFormation && phase === 'development' && !isRunPlay && (
+      {/* ─── Animated ball with team logo (during development phase) ─── */}
+      {phase === 'development' && (
         <div
           className="absolute"
           style={{
@@ -344,36 +179,42 @@ export function PlayScene({
             zIndex: 6,
           }}
         >
-          {/* Ball shape — no glow */}
-          <div
-            style={{
-              width: 14,
-              height: 9,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, #A0522D 0%, #8B4513 50%, #6B3410 100%)',
-              border: '1px solid #5C2D06',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-              position: 'relative',
-            }}
-          >
-            {/* Lace */}
+          {teamAbbreviation ? (
+            <div
+              className="rounded-full overflow-hidden flex items-center justify-center"
+              style={{
+                width: 24,
+                height: 24,
+                backgroundColor: '#1a1a2e',
+                border: `2px solid ${teamColor || offenseColor}`,
+                boxShadow: `0 0 10px ${(teamColor || offenseColor)}50, 0 2px 6px rgba(0,0,0,0.5)`,
+              }}
+            >
+              <img
+                src={getTeamLogoUrl(teamAbbreviation)}
+                alt=""
+                className="w-4 h-4 object-contain"
+                draggable={false}
+              />
+            </div>
+          ) : (
+            /* Fallback football shape */
             <div
               style={{
-                position: 'absolute',
-                top: '50%',
-                left: '20%',
-                right: '20%',
-                height: 1,
-                background: 'rgba(255,255,255,0.6)',
-                transform: 'translateY(-50%)',
+                width: 14,
+                height: 9,
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #A0522D 0%, #8B4513 50%, #6B3410 100%)',
+                border: '1px solid #5C2D06',
+                boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
               }}
             />
-          </div>
+          )}
         </div>
       )}
 
       {/* ─── Outcome markers ─── */}
-      {showFormation && (phase === 'result' || phase === 'post_play') && lastPlay && (
+      {(phase === 'result' || phase === 'post_play') && (
         <OutcomeMarker
           lastPlay={lastPlay}
           fromX={fromX}
@@ -382,57 +223,6 @@ export function PlayScene({
         />
       )}
     </div>
-  );
-}
-
-// ══════════════════════════════════════════════════════════════
-// ROUTE LINES (SVG — lines don't distort meaningfully)
-// ══════════════════════════════════════════════════════════════
-
-function RouteLines({
-  formation, fromX, offDir, offenseColor, playCall, progress,
-}: {
-  formation: PlayerDot[];
-  fromX: number;
-  offDir: number;
-  offenseColor: string;
-  playCall: string;
-  progress: number;
-}) {
-  const receivers = formation.filter(
-    d => d.team === 'offense' && (d.role === 'WR' || d.role === 'TE')
-  );
-  let routeDepth = 8;
-  if (playCall?.includes('quick')) routeDepth = 4;
-  else if (playCall?.includes('short') || playCall?.includes('screen')) routeDepth = 6;
-  else if (playCall?.includes('medium')) routeDepth = 12;
-  else if (playCall?.includes('deep')) routeDepth = 18;
-
-  return (
-    <g>
-      {receivers.map((wr, i) => {
-        const startX = clamp(wr.x, 1, 99);
-        const startY = clamp(wr.y, 3, 97);
-        const endX = startX - offDir * routeDepth * (0.8 + i * 0.15);
-        const lateralBreak = (i % 2 === 0 ? -1 : 1) * 5;
-        const midX = (startX + endX) / 2;
-        const endY = startY + lateralBreak;
-        const pathD = `M ${startX} ${startY} L ${midX} ${startY} L ${clamp(endX, 2, 98)} ${clamp(endY, 5, 95)}`;
-        const isTargeted = i === 0;
-        const routeOpacity = isTargeted ? 0.5 * progress : 0.2 * progress;
-        return (
-          <path
-            key={i}
-            d={pathD}
-            stroke={offenseColor}
-            strokeWidth={isTargeted ? '0.8' : '0.5'}
-            fill="none"
-            strokeDasharray="2 2"
-            opacity={routeOpacity}
-          />
-        );
-      })}
-    </g>
   );
 }
 
@@ -581,165 +371,6 @@ function OutcomeMarker({
 }
 
 // ══════════════════════════════════════════════════════════════
-// FORMATION GENERATION
-// ══════════════════════════════════════════════════════════════
-
-interface PlayerDot {
-  x: number;
-  y: number;
-  role: string;
-  team: 'offense' | 'defense';
-  isKeyPlayer?: boolean;
-  number?: number;
-}
-
-function getFormationDots(
-  losX: number,
-  possession: 'home' | 'away',
-  playType: PlayType | null,
-  formationType: Formation | null,
-  defensivePersonnel: DefensivePersonnel | null,
-  lastPlay: PlayResult | null,
-): PlayerDot[] {
-  const offDir = possession === 'away' ? -1 : 1;
-
-  if (playType === 'punt') return getPuntFormation(losX, offDir);
-  if (playType === 'kickoff') return getKickoffFormation(losX, offDir);
-  if (playType === 'field_goal' || playType === 'extra_point') {
-    return getFieldGoalFormation(losX, offDir);
-  }
-
-  const offenseLayout = formationType
-    ? OFFENSIVE_FORMATIONS[formationType]
-    : OFFENSIVE_FORMATIONS.shotgun;
-  const defenseLayout = defensivePersonnel
-    ? DEFENSIVE_FORMATIONS[defensivePersonnel]
-    : DEFENSIVE_FORMATIONS.base_4_3;
-
-  const offense = convertLayout(offenseLayout, losX, offDir, 'offense', lastPlay);
-  const defense = convertLayout(defenseLayout, losX, offDir, 'defense', lastPlay);
-  return [...offense, ...defense];
-}
-
-function convertLayout(
-  layout: FormationPosition[], losX: number, offDir: number,
-  team: 'offense' | 'defense', lastPlay: PlayResult | null,
-): PlayerDot[] {
-  let receiverMarked = false;
-  let defenderMarked = false;
-
-  return layout.map((pos) => {
-    const x = losX + offDir * pos.x;
-    let isKeyPlayer = false;
-    let number: number | undefined;
-
-    if (lastPlay && team === 'offense') {
-      if (pos.role === 'QB' && lastPlay.passer) {
-        isKeyPlayer = true;
-        number = lastPlay.passer.number;
-      } else if ((pos.role === 'RB' || pos.role === 'FB') && lastPlay.rusher) {
-        isKeyPlayer = true;
-        number = lastPlay.rusher.number;
-      } else if (pos.role === 'WR' && lastPlay.receiver && !receiverMarked) {
-        isKeyPlayer = true;
-        number = lastPlay.receiver.number;
-        receiverMarked = true;
-      }
-    }
-    if (lastPlay && team === 'defense' && lastPlay.defender && !defenderMarked) {
-      if (pos.role === 'LB' || pos.role === 'CB' || pos.role === 'S') {
-        isKeyPlayer = true;
-        number = lastPlay.defender.number;
-        defenderMarked = true;
-      }
-    }
-
-    return { x, y: pos.y, role: pos.role, team, isKeyPlayer, number };
-  });
-}
-
-function getPuntFormation(losX: number, offDir: number): PlayerDot[] {
-  return [
-    { x: losX, y: 35, role: 'OL', team: 'offense' },
-    { x: losX, y: 42, role: 'OL', team: 'offense' },
-    { x: losX, y: 48, role: 'OL', team: 'offense' },
-    { x: losX, y: 52, role: 'OL', team: 'offense' },
-    { x: losX, y: 58, role: 'OL', team: 'offense' },
-    { x: losX, y: 65, role: 'OL', team: 'offense' },
-    { x: losX + offDir * 1, y: 30, role: 'WG', team: 'offense' },
-    { x: losX + offDir * 1, y: 70, role: 'WG', team: 'offense' },
-    { x: losX + offDir * 0.5, y: 10, role: 'GN', team: 'offense' },
-    { x: losX + offDir * 0.5, y: 90, role: 'GN', team: 'offense' },
-    { x: losX + offDir * 12, y: 50, role: 'P', team: 'offense' },
-    { x: losX - offDir * 1, y: 38, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 45, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 55, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 62, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 5, y: 35, role: 'LB', team: 'defense' },
-    { x: losX - offDir * 5, y: 50, role: 'LB', team: 'defense' },
-    { x: losX - offDir * 5, y: 65, role: 'LB', team: 'defense' },
-    { x: losX - offDir * 12, y: 30, role: 'CB', team: 'defense' },
-    { x: losX - offDir * 12, y: 70, role: 'CB', team: 'defense' },
-    { x: losX - offDir * 20, y: 50, role: 'PR', team: 'defense' },
-    { x: losX - offDir * 18, y: 40, role: 'S', team: 'defense' },
-  ];
-}
-
-function getKickoffFormation(losX: number, offDir: number): PlayerDot[] {
-  return [
-    { x: losX + offDir * 2, y: 50, role: 'K', team: 'offense' },
-    { x: losX, y: 10, role: 'CV', team: 'offense' },
-    { x: losX, y: 20, role: 'CV', team: 'offense' },
-    { x: losX, y: 30, role: 'CV', team: 'offense' },
-    { x: losX, y: 38, role: 'CV', team: 'offense' },
-    { x: losX, y: 45, role: 'CV', team: 'offense' },
-    { x: losX, y: 55, role: 'CV', team: 'offense' },
-    { x: losX, y: 62, role: 'CV', team: 'offense' },
-    { x: losX, y: 70, role: 'CV', team: 'offense' },
-    { x: losX, y: 80, role: 'CV', team: 'offense' },
-    { x: losX, y: 90, role: 'CV', team: 'offense' },
-    { x: losX - offDir * 15, y: 35, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 15, y: 45, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 15, y: 55, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 15, y: 65, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 18, y: 30, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 18, y: 42, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 18, y: 58, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 18, y: 70, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 22, y: 40, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 22, y: 60, role: 'BK', team: 'defense' },
-    { x: losX - offDir * 30, y: 50, role: 'KR', team: 'defense' },
-  ];
-}
-
-function getFieldGoalFormation(losX: number, offDir: number): PlayerDot[] {
-  return [
-    { x: losX, y: 40, role: 'OL', team: 'offense' },
-    { x: losX, y: 44, role: 'OL', team: 'offense' },
-    { x: losX, y: 48, role: 'OL', team: 'offense' },
-    { x: losX, y: 50, role: 'OL', team: 'offense' },
-    { x: losX, y: 52, role: 'OL', team: 'offense' },
-    { x: losX, y: 56, role: 'OL', team: 'offense' },
-    { x: losX, y: 60, role: 'OL', team: 'offense' },
-    { x: losX + offDir * 0.5, y: 36, role: 'WG', team: 'offense' },
-    { x: losX + offDir * 0.5, y: 64, role: 'WG', team: 'offense' },
-    { x: losX + offDir * 6, y: 50, role: 'H', team: 'offense' },
-    { x: losX + offDir * 9, y: 50, role: 'K', team: 'offense' },
-    { x: losX - offDir * 1, y: 40, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 44, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 48, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 52, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 56, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 1, y: 60, role: 'DL', team: 'defense' },
-    { x: losX - offDir * 3, y: 35, role: 'LB', team: 'defense' },
-    { x: losX - offDir * 3, y: 50, role: 'LB', team: 'defense' },
-    { x: losX - offDir * 3, y: 65, role: 'LB', team: 'defense' },
-    { x: losX - offDir * 8, y: 30, role: 'CB', team: 'defense' },
-    { x: losX - offDir * 8, y: 70, role: 'CB', team: 'defense' },
-  ];
-}
-
-// ══════════════════════════════════════════════════════════════
 // BALL TRAJECTORY
 // ══════════════════════════════════════════════════════════════
 
@@ -802,8 +433,8 @@ function calculateBallPosition(
       if (t < 0.2) return { x: fromX + offDir * 2 * easeOutCubic(t / 0.2), y: 50 };
       if (t < 0.5) return { x: fromX + offDir * 2 + Math.sin((t - 0.2) * 15) * 0.8, y: 50 };
       const sackT = easeOutCubic((t - 0.5) / 0.5);
-      const qbX = fromX + offDir * 2;
-      const x = qbX + (toX - qbX) * sackT;
+      const qbX2 = fromX + offDir * 2;
+      const x = qbX2 + (toX - qbX2) * sackT;
       const jolt = t > 0.75 ? Math.sin((t - 0.75) * 30) * 1.5 * (1 - t) : 0;
       return { x: x + jolt, y: 50 + jolt * 0.5 };
     }

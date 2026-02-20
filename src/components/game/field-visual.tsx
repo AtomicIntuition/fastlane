@@ -234,27 +234,9 @@ export function FieldVisual({
     }
   }, [lastPlay]);
 
-  // ── Measure container aspect ratio for round dots ──────
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [aspectRatio, setAspectRatio] = useState(2.5);
-
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const update = () => {
-      const { width, height } = el.getBoundingClientRect();
-      if (height > 0) setAspectRatio(width / height);
-    };
-    update();
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
   return (
     <div className="w-full h-full px-1.5 py-1">
       <div
-        ref={containerRef}
         className="field-container relative w-full h-full rounded-xl overflow-hidden border border-white/10"
         role="img"
         aria-label={`Football field. Ball at the ${ballPosition} yard line. ${down}${
@@ -296,9 +278,11 @@ export function FieldVisual({
             direction={ballDirection}
             isKicking={!!isKicking}
             hidden={isPlayAnimating}
+            teamAbbreviation={possessingTeam.abbreviation}
+            teamColor={possessingTeam.primaryColor}
           />
 
-          {/* Play scene: player dots + animated ball trajectory */}
+          {/* Play scene: animated ball trajectory */}
           <PlayScene
             ballLeftPercent={ballLeft}
             prevBallLeftPercent={prevBallLeft}
@@ -309,7 +293,8 @@ export function FieldVisual({
             playKey={playKey}
             onAnimating={handlePlayAnimating}
             onPhaseChange={handlePhaseChange}
-            aspectRatio={aspectRatio}
+            teamAbbreviation={possessingTeam.abbreviation}
+            teamColor={possessingTeam.primaryColor}
           />
 
           {/* Player name highlight */}

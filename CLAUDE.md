@@ -82,7 +82,7 @@ Post-hoc AI commentary via Anthropic Claude Sonnet. Rate-limited (10 req/min), b
 ### Database
 
 - **ORM**: Drizzle ORM with `postgres.js` driver — **must use `prepare: false`** for Supabase connection pooler
-- **Schema**: `src/lib/db/schema.ts` — teams, players, seasons, games, game_events, standings, predictions, user_scores
+- **Schema**: `src/lib/db/schema.ts` — teams, players, seasons, games, game_events, standings, predictions, user_scores, jumbotron_messages
 - **Connection**: Lazy-initialized singleton via Proxy in `src/lib/db/index.ts`
 - **JSONB columns**: `boxScore`, `playResult`, `narrativeContext` stored as JSONB for flexibility
 - **Queries**: `src/lib/db/queries/` — games.ts, teams.ts, events.ts, predictions.ts, leaderboard.ts
@@ -118,6 +118,34 @@ Required in `.env.local`:
 - Clerk auth keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`)
 - Stripe keys (future monetization)
 
+### Quarter Break Overlays
+
+The game viewer shows overlays at Q1→Q2 and Q3→Q4 transitions (10s duration, auto-dismiss). The halftime overlay at Q2→Q3 remains at 18s. Quarter transitions are detected by comparing `prevEvent.quarter` to `gameState.quarter`. A `Set` ref prevents showing the same quarter break twice.
+
+### Jumbotron System
+
+Admin messaging overlay displayed on the game broadcast field.
+
+- **Schema**: `jumbotronMessages` table — `id`, `message`, `type`, `durationSeconds`, `expiresAt`, `createdAt`
+- **API**: `POST/GET/DELETE /api/admin/jumbotron` — POST/DELETE require `Bearer CRON_SECRET` auth, GET is public
+- **Hook**: `useJumbotron()` polls GET every 10s, auto-clears expired messages client-side
+- **Overlay**: `<JumbotronOverlay />` renders gold banner at top of field (z-40)
+- **Send via curl**: `curl -X POST https://site/api/admin/jumbotron -H "Authorization: Bearer $SECRET" -H "Content-Type: application/json" -d '{"message":"Hello!", "type":"info", "durationSeconds":60}'`
+
+### Real Player Names (ESPN)
+
+Player seeding fetches real rosters from ESPN's public API (`site.api.espn.com/apis/site/v2/sports/football/nfl/teams/{id}/roster`). ESPN positions are mapped to our enum (OLB/ILB→LB, OT/OG/C→OL, DE/DT→DL, FS/SS→S, FB→RB). Falls back to generated names if ESPN data is unavailable. Ratings remain deterministic (seeded PRNG). ESPN team ID mapping in `src/lib/db/seed-data/players.ts`.
+
+### Chrome Extension (`extension/`)
+
+Manifest V3 extension for 24/7 keep-alive + admin controls. Vanilla HTML/CSS/JS, no build step.
+
+- **Setup**: Load unpacked at `chrome://extensions` → select `extension/` folder → configure URL + secret in options page
+- **Service worker**: `chrome.alarms` at 30s interval → `POST /api/simulate` with Bearer auth
+- **Popup**: Shows connection status, current game (ESPN logos), season progress, "Simulate Now" button, jumbotron controls
+- **Options**: Site URL + CRON_SECRET stored in `chrome.storage.sync`
+- **Icons**: Placeholder PNGs in `extension/icons/`
+
 ## Deployment
 
-Deployed on Vercel. `vercel.json` configures daily cron at `0 0 * * *` hitting `/api/simulate`. The `SimulationDriver` handles continuous advancement when users are active between cron runs.
+Deployed on Vercel. `vercel.json` configures daily cron at `0 0 * * *` hitting `/api/simulate`. The `SimulationDriver` handles continuous advancement when users are active between cron runs. The Chrome extension provides 24/7 keep-alive independent of browser tabs.

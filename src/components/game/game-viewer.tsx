@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import type { NarrativeSnapshot, GameState } from '@/lib/simulation/types';
 import { useGameStream } from '@/hooks/use-game-stream';
 import { useMomentum } from '@/hooks/use-momentum';
-import { useCountdown } from '@/hooks/use-countdown';
 import { useDynamicTab } from '@/hooks/use-dynamic-tab';
 import { buildLiveBoxScore } from '@/lib/utils/live-box-score';
 import { getTeamLogoUrl } from '@/lib/utils/team-logos';
@@ -22,6 +21,7 @@ import { DriveTracker } from '@/components/game/drive-tracker';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { JumbotronOverlay } from '@/components/game/jumbotron-overlay';
 
 interface GameViewerProps {
   gameId: string;
@@ -114,6 +114,36 @@ export function GameViewer({ gameId }: GameViewerProps) {
     }
   }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Detect quarter breaks: Q1→Q2 and Q3→Q4 transitions
+  const [showQuarterBreak, setShowQuarterBreak] = useState(false);
+  const [quarterBreakNumber, setQuarterBreakNumber] = useState<1 | 3>(1);
+  const quarterBreaksShownRef = useRef<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (!currentEvent || !gameState || events.length < 2) return;
+
+    const prevQuarter = events[events.length - 2]?.gameState.quarter;
+    const curQuarter = gameState.quarter;
+
+    // Q1→Q2 transition
+    if (curQuarter === 2 && prevQuarter === 1 && !quarterBreaksShownRef.current.has(1)) {
+      quarterBreaksShownRef.current.add(1);
+      setQuarterBreakNumber(1);
+      setShowQuarterBreak(true);
+      const timer = setTimeout(() => setShowQuarterBreak(false), 10_000);
+      return () => clearTimeout(timer);
+    }
+
+    // Q3→Q4 transition
+    if (curQuarter === 4 && prevQuarter === 3 && !quarterBreaksShownRef.current.has(3)) {
+      quarterBreaksShownRef.current.add(3);
+      setQuarterBreakNumber(3);
+      setShowQuarterBreak(true);
+      const timer = setTimeout(() => setShowQuarterBreak(false), 10_000);
+      return () => clearTimeout(timer);
+    }
+  }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Connecting / Error state ──────────────────────────────
 
   if (status === 'connecting') {
@@ -165,108 +195,144 @@ export function GameViewer({ gameId }: GameViewerProps) {
   const isCatchup = status === 'catchup';
 
   return (
-    <div className="flex flex-col">
-      {/* ═══ Live broadcast view — fills exactly one viewport ═══ */}
-      <div className="h-dvh flex flex-col overflow-hidden">
-        {/* ── Top: Nav + ScoreBug ── */}
-        <div className="flex-shrink-0">
-          <GameNav />
-          <ScoreBug
-            gameState={gameState}
-            status={status === 'game_over' ? 'game_over' : 'live'}
-          />
+    <div className="h-dvh flex flex-col overflow-hidden">
+      {/* ── Top: Nav + ScoreBug (full width) ── */}
+      <div className="flex-shrink-0">
+        <GameNav />
+        <ScoreBug
+          gameState={gameState}
+          status={status === 'game_over' ? 'game_over' : 'live'}
+        />
 
-          {/* Banners */}
-          {isCatchup && (
-            <div className="bg-info/10 border-b border-info/20 px-3 py-0.5 text-center">
-              <span className="text-[10px] text-info font-semibold">
-                Catching up to live...
-              </span>
-            </div>
-          )}
-          {error && status !== 'error' && (
-            <div className="bg-danger/10 border-b border-danger/20 px-3 py-0.5 flex items-center justify-between">
-              <span className="text-[10px] text-danger font-medium">{error}</span>
-              <button onClick={reconnect} className="text-[10px] text-danger font-bold underline">
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Banners */}
+        {isCatchup && (
+          <div className="bg-info/10 border-b border-info/20 px-3 py-0.5 text-center">
+            <span className="text-[10px] text-info font-semibold">
+              Catching up to live...
+            </span>
+          </div>
+        )}
+        {error && status !== 'error' && (
+          <div className="bg-danger/10 border-b border-danger/20 px-3 py-0.5 flex items-center justify-between">
+            <span className="text-[10px] text-danger font-medium">{error}</span>
+            <button onClick={reconnect} className="text-[10px] text-danger font-bold underline">
+              Retry
+            </button>
+          </div>
+        )}
+      </div>
 
-        {/* ── Field — fills remaining vertical space ── */}
-        <div className="flex-1 min-h-0">
-          <FieldVisual
-            ballPosition={gameState.ballPosition}
-            firstDownLine={firstDownLine}
-            possession={gameState.possession}
-            homeTeam={{
-              abbreviation: gameState.homeTeam.abbreviation,
-              primaryColor: gameState.homeTeam.primaryColor,
-              secondaryColor: gameState.homeTeam.secondaryColor,
-            }}
-            awayTeam={{
-              abbreviation: gameState.awayTeam.abbreviation,
-              primaryColor: gameState.awayTeam.primaryColor,
-              secondaryColor: gameState.awayTeam.secondaryColor,
-            }}
-            down={gameState.down}
-            yardsToGo={gameState.yardsToGo}
-            quarter={gameState.quarter}
-            clock={gameState.clock}
-            lastPlay={currentEvent?.playResult ?? null}
-            isKickoff={gameState.kickoff}
-            isPatAttempt={gameState.patAttempt}
-            gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
-            driveStartPosition={driveStartPosition}
-            narrativeContext={currentEvent?.narrativeContext ?? null}
-            commentary={currentEvent ? {
-              playByPlay: currentEvent.commentary.playByPlay,
-              crowdReaction: currentEvent.commentary.crowdReaction,
-              excitement: currentEvent.commentary.excitement,
-            } : null}
-          />
-        </div>
-
-        {/* ── Bottom panel: info + commentary (compact, always visible) ── */}
-        <div className="flex-shrink-0 border-t border-white/[0.06]">
-          {/* Possession strip */}
-          <PossessionStrip gameState={gameState} />
-
-          {/* Momentum meter */}
-          <MomentumMeter
-            momentum={momentum}
-            homeColor={gameState.homeTeam.primaryColor}
-            awayColor={gameState.awayTeam.primaryColor}
-            homeAbbrev={gameState.homeTeam.abbreviation}
-            awayAbbrev={gameState.awayTeam.abbreviation}
-          />
-
-          {/* Crowd energy — compact bar */}
-          {currentEvent && (
-            <CrowdEnergy
-              excitement={currentEvent.commentary.excitement}
-              crowdReaction={currentEvent.commentary.crowdReaction}
-              compact
-            />
-          )}
-
-          {/* Drive tracker — compact */}
-          {!gameState.kickoff && !gameState.patAttempt && currentEvent && (
-            <DriveTracker
-              startPosition={driveStartPosition}
-              currentPosition={gameState.ballPosition}
-              plays={events.filter(e => e.driveNumber === currentEvent.driveNumber).length}
-              yards={gameState.ballPosition - driveStartPosition}
-              timeElapsed={0}
-              teamColor={(gameState.possession === 'home' ? gameState.homeTeam : gameState.awayTeam).primaryColor}
+      {/* ── Main content: responsive grid ── */}
+      <div className="flex-1 min-h-0 lg:grid lg:grid-cols-5">
+        {/* ═══ Left: Field + info strips (3/5 on desktop, full on mobile) ═══ */}
+        <div className="flex flex-col lg:col-span-3 min-h-0">
+          {/* Field */}
+          <div className="flex-1 min-h-0 relative">
+            <JumbotronOverlay />
+            <FieldVisual
+              ballPosition={gameState.ballPosition}
               firstDownLine={firstDownLine}
-              compact
+              possession={gameState.possession}
+              homeTeam={{
+                abbreviation: gameState.homeTeam.abbreviation,
+                primaryColor: gameState.homeTeam.primaryColor,
+                secondaryColor: gameState.homeTeam.secondaryColor,
+              }}
+              awayTeam={{
+                abbreviation: gameState.awayTeam.abbreviation,
+                primaryColor: gameState.awayTeam.primaryColor,
+                secondaryColor: gameState.awayTeam.secondaryColor,
+              }}
+              down={gameState.down}
+              yardsToGo={gameState.yardsToGo}
+              quarter={gameState.quarter}
+              clock={gameState.clock}
+              lastPlay={currentEvent?.playResult ?? null}
+              isKickoff={gameState.kickoff}
+              isPatAttempt={gameState.patAttempt}
+              gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
+              driveStartPosition={driveStartPosition}
+              narrativeContext={currentEvent?.narrativeContext ?? null}
+              commentary={currentEvent ? {
+                playByPlay: currentEvent.commentary.playByPlay,
+                crowdReaction: currentEvent.commentary.crowdReaction,
+                excitement: currentEvent.commentary.excitement,
+              } : null}
             />
+          </div>
+
+          {/* Info strips below field */}
+          <div className="flex-shrink-0 border-t border-white/[0.06]">
+            <PossessionStrip gameState={gameState} />
+
+            <MomentumMeter
+              momentum={momentum}
+              homeColor={gameState.homeTeam.primaryColor}
+              awayColor={gameState.awayTeam.primaryColor}
+              homeAbbrev={gameState.homeTeam.abbreviation}
+              awayAbbrev={gameState.awayTeam.abbreviation}
+            />
+
+            {currentEvent && (
+              <CrowdEnergy
+                excitement={currentEvent.commentary.excitement}
+                crowdReaction={currentEvent.commentary.crowdReaction}
+                compact
+              />
+            )}
+
+            {!gameState.kickoff && !gameState.patAttempt && currentEvent && (
+              <DriveTracker
+                startPosition={driveStartPosition}
+                currentPosition={gameState.ballPosition}
+                plays={events.filter(e => e.driveNumber === currentEvent.driveNumber).length}
+                yards={gameState.ballPosition - driveStartPosition}
+                timeElapsed={0}
+                teamColor={(gameState.possession === 'home' ? gameState.homeTeam : gameState.awayTeam).primaryColor}
+                firstDownLine={firstDownLine}
+                compact
+              />
+            )}
+          </div>
+        </div>
+
+        {/* ═══ Right: Sidebar (2/5 on desktop, below field on mobile) ═══ */}
+        <div className="lg:col-span-2 flex flex-col min-h-0 border-l border-white/[0.06]">
+          {/* Live commentary */}
+          <div className="flex-shrink-0">
+            <LiveCommentary event={currentEvent} />
+          </div>
+
+          {/* Between-play insights — rotates through contextual info */}
+          <div className="flex-shrink-0">
+            <BetweenPlayInsight
+              gameState={gameState}
+              events={events}
+              currentEvent={currentEvent}
+              activeBoxScore={activeBoxScore}
+            />
+          </div>
+
+          {/* Narrative tags */}
+          {currentEvent?.narrativeContext && (
+            <div className="flex-shrink-0">
+              <NarrativeBar narrative={currentEvent.narrativeContext} />
+            </div>
           )}
 
-          {/* Live commentary — color analysis only (play-by-play shown on field overlay) */}
-          <LiveCommentary event={currentEvent} />
+          {/* Box Score — always visible */}
+          <div className="flex-shrink-0 border-t border-white/[0.06]">
+            <BoxScore
+              boxScore={activeBoxScore}
+              homeTeam={gameState.homeTeam}
+              awayTeam={gameState.awayTeam}
+            />
+          </div>
+
+          {/* Play Feed — fills remaining space with scroll */}
+          <div className="flex-1 min-h-0 overflow-y-auto border-t border-white/[0.06]">
+            <PlayFeed events={events} isLive={isLive} />
+          </div>
         </div>
       </div>
 
@@ -282,23 +348,18 @@ export function GameViewer({ gameId }: GameViewerProps) {
         />
       )}
 
-      {/* ═══ Below viewport: scrollable detail ═══ */}
-      <div>
-        {/* Narrative context tags */}
-        {currentEvent?.narrativeContext && (
-          <NarrativeBar narrative={currentEvent.narrativeContext} />
-        )}
-
-        {/* Collapsible box score */}
-        <BoxScoreDropdown
-          boxScore={activeBoxScore}
+      {/* ── Quarter break overlay ── */}
+      {showQuarterBreak && activeBoxScore && (
+        <QuarterBreakOverlay
+          quarter={quarterBreakNumber}
           homeTeam={gameState.homeTeam}
           awayTeam={gameState.awayTeam}
+          homeScore={gameState.homeScore}
+          awayScore={gameState.awayScore}
+          boxScore={activeBoxScore}
+          onDismiss={() => setShowQuarterBreak(false)}
         />
-
-        {/* Full play history */}
-        <PlayFeed events={events} isLive={isLive} />
-      </div>
+      )}
     </div>
   );
 }
@@ -431,207 +492,108 @@ function LiveCommentary({
   );
 }
 
-// ── Collapsible Box Score Dropdown ────────────────────────────
+// ── Between-Play Insight (rotates contextual info) ───────────
 
-function BoxScoreDropdown({
-  boxScore: boxScoreData,
-  homeTeam: home,
-  awayTeam: away,
+function BetweenPlayInsight({
+  gameState,
+  events,
+  currentEvent,
+  activeBoxScore,
 }: {
-  boxScore: import('@/lib/simulation/types').BoxScore | null;
-  homeTeam: import('@/lib/simulation/types').Team;
-  awayTeam: import('@/lib/simulation/types').Team;
+  gameState: GameState;
+  events: import('@/lib/simulation/types').GameEvent[];
+  currentEvent: import('@/lib/simulation/types').GameEvent | null;
+  activeBoxScore: import('@/lib/simulation/types').BoxScore | null;
 }) {
-  const [open, setOpen] = useState(false);
+  const [insightIndex, setInsightIndex] = useState(0);
 
-  return (
-    <div className="border-b border-border/50">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between px-4 py-2 hover:bg-surface-hover/50 transition-colors"
-      >
-        <span className="text-[10px] font-black tracking-widest uppercase text-text-muted">
-          Box Score
-        </span>
-        <svg
-          className="w-4 h-4 text-text-muted transition-transform duration-200"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-          viewBox="0 0 20 20"
-          fill="currentColor"
-        >
-          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-        </svg>
-      </button>
-      <div
-        className="overflow-hidden transition-all duration-300 ease-in-out"
-        style={{
-          maxHeight: open ? '600px' : '0px',
-        }}
-      >
-        <div className="border-t border-border/30">
-          <BoxScore
-            boxScore={boxScoreData}
-            homeTeam={home}
-            awayTeam={away}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
+  // Rotate through insights every 4 seconds
+  const insights = useMemo(() => {
+    const items: string[] = [];
 
-// ── Next Game Preview (shown after game over) ───────────────
-
-interface NextGameData {
-  id: string;
-  homeTeam: { abbreviation: string; name: string; city: string; mascot: string; primaryColor: string } | null;
-  awayTeam: { abbreviation: string; name: string; city: string; mascot: string; primaryColor: string } | null;
-  gameType: string;
-  week: number;
-}
-
-function NextGamePreview() {
-  const [nextGame, setNextGame] = useState<NextGameData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [countdownTarget, setCountdownTarget] = useState(0);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchNext() {
-      try {
-        const res = await fetch('/api/game/current');
-        const data = await res.json();
-        if (cancelled) return;
-
-        if (data.nextGame) {
-          setNextGame(data.nextGame);
-          // Use actual intermission timing from API if available
-          if (data.intermission?.remainingSeconds) {
-            setCountdownTarget(data.intermission.remainingSeconds);
-          } else {
-            setCountdownTarget(15 * 60);
-          }
-        }
-      } catch {
-        // Silently fail
-      } finally {
-        if (!cancelled) setLoading(false);
+    // Drive summary
+    if (currentEvent && !gameState.kickoff && !gameState.patAttempt) {
+      const driveEvents = events.filter(e => e.driveNumber === currentEvent.driveNumber);
+      const driveYards = gameState.ballPosition -
+        (driveEvents.length > 0 ? driveEvents[0].gameState.ballPosition : gameState.ballPosition);
+      if (driveEvents.length > 0) {
+        items.push(`Drive: ${driveEvents.length} play${driveEvents.length !== 1 ? 's' : ''}, ${Math.abs(driveYards)} yards`);
       }
     }
 
-    // Small delay before fetching — let game_over settle
-    const timer = setTimeout(fetchNext, 1000);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, []);
+    // Stat comparison
+    if (activeBoxScore) {
+      const { homeStats, awayStats } = activeBoxScore;
+      items.push(`Total yards: ${gameState.awayTeam.abbreviation} ${awayStats.totalYards} - ${gameState.homeTeam.abbreviation} ${homeStats.totalYards}`);
+      if (homeStats.turnovers + awayStats.turnovers > 0) {
+        items.push(`Turnovers: ${gameState.awayTeam.abbreviation} ${awayStats.turnovers} - ${gameState.homeTeam.abbreviation} ${homeStats.turnovers}`);
+      }
+    }
 
-  const { formatted: countdown, isExpired } = useCountdown(countdownTarget, countdownTarget > 0);
+    // Narrative tags
+    if (currentEvent?.narrativeContext) {
+      const nc = currentEvent.narrativeContext;
+      if (nc.isComebackBrewing) items.push('A comeback is brewing...');
+      if (nc.isClutchMoment) items.push('Clutch moment!');
+      if (nc.isBlowout) items.push('This one is getting out of hand');
+      if (nc.isDominatingPerformance) {
+        items.push(`${nc.isDominatingPerformance.player.name} is dominating`);
+      }
+    }
 
-  if (loading) {
-    return (
-      <div className="max-w-lg mx-auto px-4 mt-4">
-        <div className="glass-card rounded-2xl p-6 text-center">
-          <div className="w-6 h-6 rounded-full border-2 border-gold/30 border-t-gold animate-spin mx-auto" />
-          <p className="text-xs text-text-muted mt-2">Finding next game...</p>
-        </div>
-      </div>
-    );
-  }
+    // Situation context
+    if (gameState.ballPosition >= 80 && !gameState.kickoff && !gameState.patAttempt) {
+      items.push('Red zone opportunity');
+    }
+    const q = gameState.quarter;
+    if (typeof q === 'number' && q === 4 && gameState.clock <= 120) {
+      items.push('Two-minute warning approaching');
+    }
+    if (q === 'OT') {
+      items.push('Overtime — next score could win it');
+    }
 
-  if (!nextGame) {
-    return (
-      <div className="max-w-lg mx-auto px-4 mt-4">
-        <div className="glass-card rounded-2xl p-6 text-center">
-          <p className="text-xs text-text-muted tracking-wider uppercase font-bold mb-2">
-            Week Complete
-          </p>
-          <p className="text-sm text-text-secondary">
-            All games this week have been played. Next week kicks off soon.
-          </p>
-          <Link
-            href="/schedule"
-            className="inline-flex items-center gap-2 mt-4 px-5 py-2 text-sm font-medium text-gold hover:text-gold-bright transition-colors border border-gold/20 rounded-full"
-          >
-            View Standings {'\u2192'}
-          </Link>
-        </div>
-      </div>
-    );
-  }
+    // Scoring margin
+    const diff = Math.abs(gameState.homeScore - gameState.awayScore);
+    if (diff === 0 && events.length > 10) {
+      items.push('Tied game — every play matters');
+    } else if (diff <= 3 && typeof q === 'number' && q >= 4) {
+      items.push('One score game in the 4th quarter');
+    }
+
+    return items.length > 0 ? items : ['Game in progress...'];
+  }, [gameState, events, currentEvent, activeBoxScore]);
+
+  useEffect(() => {
+    if (insights.length <= 1) return;
+    const timer = setInterval(() => {
+      setInsightIndex(prev => (prev + 1) % insights.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [insights.length]);
+
+  // Reset index when insights change
+  useEffect(() => {
+    setInsightIndex(0);
+  }, [insights.length]);
+
+  const currentInsight = insights[insightIndex % insights.length];
 
   return (
-    <div className="max-w-lg mx-auto px-4 mt-4 pb-6">
-      <div className="glass-card rounded-2xl p-6">
-        {/* Countdown */}
-        <div className="text-center mb-5">
-          <p className="text-[10px] text-text-muted tracking-wider uppercase font-bold mb-1">
-            Next Game
-          </p>
-          {!isExpired ? (
-            <div className="font-mono text-2xl font-black text-gold tabular-nums">
-              {countdown}
-            </div>
-          ) : (
-            <div className="flex items-center justify-center gap-2">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-gold" />
-              </span>
-              <span className="text-sm font-bold text-gold">Starting soon...</span>
-            </div>
-          )}
-        </div>
-
-        {/* Matchup */}
-        <div className="flex items-center justify-center gap-5">
-          {/* Away team */}
-          <div className="flex flex-col items-center text-center">
-            <img
-              src={getTeamLogoUrl(nextGame.awayTeam?.abbreviation ?? '???')}
-              alt={nextGame.awayTeam?.name ?? ''}
-              className="w-14 h-14 object-contain drop-shadow-lg mb-1.5"
-            />
-            <span className="text-xs text-text-muted">
-              {nextGame.awayTeam?.city ?? ''}
-            </span>
-            <span className="text-sm font-bold">
-              {nextGame.awayTeam?.mascot ?? '???'}
-            </span>
-          </div>
-
-          {/* VS */}
-          <div className="text-center">
-            <p className="text-2xl font-black text-text-muted">VS</p>
-          </div>
-
-          {/* Home team */}
-          <div className="flex flex-col items-center text-center">
-            <img
-              src={getTeamLogoUrl(nextGame.homeTeam?.abbreviation ?? '???')}
-              alt={nextGame.homeTeam?.name ?? ''}
-              className="w-14 h-14 object-contain drop-shadow-lg mb-1.5"
-            />
-            <span className="text-xs text-text-muted">
-              {nextGame.homeTeam?.city ?? ''}
-            </span>
-            <span className="text-sm font-bold">
-              {nextGame.homeTeam?.mascot ?? '???'}
-            </span>
-          </div>
-        </div>
-
-        {/* CTA */}
-        <div className="flex justify-center mt-5">
-          <Link
-            href={`/game/${nextGame.id}`}
-            className="inline-flex items-center gap-2 px-6 py-2.5 bg-gold text-midnight font-bold text-sm rounded-full hover:bg-gold-bright transition-colors shadow-lg shadow-gold/20"
-          >
-            MAKE YOUR PREDICTION
-          </Link>
-        </div>
+    <div className="px-3 py-1.5 border-t border-white/[0.06]">
+      <div className="flex items-center gap-2">
+        <div className="w-1 h-1 rounded-full bg-gold/50 flex-shrink-0" />
+        <p
+          className="text-[10px] text-text-muted font-medium truncate transition-opacity duration-300"
+          key={currentInsight}
+        >
+          {currentInsight}
+        </p>
+        {insights.length > 1 && (
+          <span className="text-[8px] text-text-muted/50 flex-shrink-0 tabular-nums">
+            {(insightIndex % insights.length) + 1}/{insights.length}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -706,6 +668,92 @@ function NarrativeBar({
   );
 }
 
+// ── Quarter Break Overlay ────────────────────────────────────
+
+function QuarterBreakOverlay({
+  quarter,
+  homeTeam: home,
+  awayTeam: away,
+  homeScore,
+  awayScore,
+  boxScore: qtrBox,
+  onDismiss,
+}: {
+  quarter: 1 | 3;
+  homeTeam: import('@/lib/simulation/types').Team;
+  awayTeam: import('@/lib/simulation/types').Team;
+  homeScore: number;
+  awayScore: number;
+  boxScore: import('@/lib/simulation/types').BoxScore;
+  onDismiss: () => void;
+}) {
+  const [countdown, setCountdown] = useState(10);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          onDismiss();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [onDismiss]);
+
+  const label = quarter === 1 ? '1ST' : '3RD';
+
+  return (
+    <div className="px-3 py-3 border-b border-white/10 bg-gradient-to-b from-surface-elevated/95 to-surface/90 backdrop-blur-sm">
+      <div className="max-w-lg mx-auto space-y-2.5">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full bg-white/5 text-text-secondary border border-white/10">
+            END OF {label} QUARTER
+          </span>
+          <button
+            onClick={onDismiss}
+            className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
+          >
+            Resuming in {countdown}s
+          </button>
+        </div>
+
+        {/* Score */}
+        <div className="flex items-center justify-center gap-4 py-0.5">
+          <div className="text-center">
+            <span className="text-xs text-text-muted">{away.abbreviation}</span>
+            <p className="text-lg font-black tabular-nums">{awayScore}</p>
+          </div>
+          <span className="text-xs text-text-muted font-bold">—</span>
+          <div className="text-center">
+            <span className="text-xs text-text-muted">{home.abbreviation}</span>
+            <p className="text-lg font-black tabular-nums">{homeScore}</p>
+          </div>
+        </div>
+
+        {/* Key stats */}
+        <div className="grid grid-cols-2 gap-2 text-center text-[11px]">
+          <div>
+            <span className="text-text-muted block">Total Yards</span>
+            <span className="font-bold">{qtrBox.awayStats.totalYards}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{qtrBox.homeStats.totalYards}</span>
+          </div>
+          <div>
+            <span className="text-text-muted block">Turnovers</span>
+            <span className="font-bold">{qtrBox.awayStats.turnovers}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{qtrBox.homeStats.turnovers}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Intermission Screen ──────────────────────────────────────
 
 function IntermissionScreen({
@@ -737,15 +785,15 @@ function IntermissionScreen({
     return () => clearInterval(timer);
   }, [countdown > 0]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-navigate to next game when countdown hits 0
+  // Auto-navigate to home when countdown hits 0
   useEffect(() => {
-    if (countdown === 0 && nextGameId) {
+    if (countdown === 0) {
       const timer = setTimeout(() => {
-        router.push(`/game/${nextGameId}`);
+        router.push('/');
       }, 3000);
       return () => clearTimeout(timer);
     }
-  }, [countdown, nextGameId, router]);
+  }, [countdown, router]);
 
   return (
     <div className="min-h-dvh flex flex-col">
@@ -799,22 +847,12 @@ function IntermissionScreen({
           ) : (
             <p className="text-sm text-text-muted">Next week kicks off soon.</p>
           )}
-          {nextGameId && (
-            <Link
-              href={`/game/${nextGameId}`}
-              className="inline-flex items-center gap-2 px-6 py-2.5 bg-gold text-midnight font-bold text-sm rounded-full hover:bg-gold-bright transition-colors shadow-lg shadow-gold/20"
-            >
-              GO TO NEXT GAME
-            </Link>
-          )}
-          {!nextGameId && (
-            <Link
-              href="/schedule"
-              className="inline-flex items-center gap-2 px-5 py-2 text-sm font-medium text-text-secondary hover:text-text-primary transition-colors border border-border rounded-full"
-            >
-              View Standings {'\u2192'}
-            </Link>
-          )}
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 px-6 py-2.5 bg-gold text-midnight font-bold text-sm rounded-full hover:bg-gold-bright transition-colors shadow-lg shadow-gold/20"
+          >
+            GO HOME
+          </Link>
         </div>
       </div>
     </div>
@@ -962,7 +1000,7 @@ function GameOverWithRedirect({
   mvp: import('@/lib/simulation/types').PlayerGameStats | null;
 }) {
   const router = useRouter();
-  const [countdown, setCountdown] = useState(30);
+  const [countdown, setCountdown] = useState(8);
   const [cancelled, setCancelled] = useState(false);
 
   useEffect(() => {
@@ -993,7 +1031,6 @@ function GameOverWithRedirect({
         mvp={gameOverMvp}
         nextGameCountdown={0}
       />
-      <NextGamePreview />
 
       {/* Auto-redirect countdown */}
       {!cancelled && countdown > 0 && (

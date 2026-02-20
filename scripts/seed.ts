@@ -12,7 +12,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { v4 as uuidv4 } from 'uuid';
 import * as schema from '../src/lib/db/schema';
 import { teamsSeedData } from '../src/lib/db/seed-data/teams';
-import { generatePlayersForTeam } from '../src/lib/db/seed-data/players';
+import { generatePlayersFromESPN } from '../src/lib/db/seed-data/players';
 import { generateSeasonSchedule } from '../src/lib/scheduling/schedule-generator';
 import type { Team } from '../src/lib/simulation/types';
 
@@ -77,14 +77,14 @@ async function seed() {
   // ----------------------------------------------------------
   // 2. Seed Players
   // ----------------------------------------------------------
-  console.log('2/5 Generating rosters for all 32 teams...');
+  console.log('2/5 Fetching real rosters from ESPN + generating ratings...');
 
   let totalPlayers = 0;
 
   for (let i = 0; i < teamsSeedData.length; i++) {
     const teamData = teamsSeedData[i];
     const teamId = teamIdMap.get(teamData.abbreviation)!;
-    const roster = generatePlayersForTeam(teamData.abbreviation, i);
+    const roster = await generatePlayersFromESPN(teamData.abbreviation, i);
 
     // Insert in batches for performance
     const playerValues = roster.map((p) => ({
@@ -102,9 +102,11 @@ async function seed() {
 
     await db.insert(schema.players).values(playerValues);
     totalPlayers += roster.length;
+    // Show progress for ESPN fetches
+    process.stdout.write(`   ${teamData.abbreviation}`);
   }
 
-  console.log(`   ✓ ${totalPlayers} players created (~${Math.round(totalPlayers / 32)} per team)`);
+  console.log(`\n   ✓ ${totalPlayers} players created (~${Math.round(totalPlayers / 32)} per team)`);
 
   // ----------------------------------------------------------
   // 3. Create Season 1

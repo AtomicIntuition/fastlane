@@ -1,7 +1,37 @@
 import type { Player, Position } from '../../simulation/types';
 
 // ============================================================
-// NAME POOLS (deterministic player name generation)
+// ESPN TEAM ID MAPPING
+// ============================================================
+
+const ESPN_TEAM_IDS: Record<string, number> = {
+  ARI: 22, ATL: 1, BAL: 33, BUF: 2, CAR: 29, CHI: 3, CIN: 4, CLE: 5,
+  DAL: 6, DEN: 7, DET: 8, GB: 9, HOU: 34, IND: 11, JAX: 30, KC: 12,
+  LAC: 24, LAR: 14, LV: 13, MIA: 15, MIN: 16, NE: 17, NO: 18, NYG: 19,
+  NYJ: 20, PHI: 21, PIT: 23, SEA: 26, SF: 25, TB: 27, TEN: 10, WAS: 28,
+};
+
+// ============================================================
+// ESPN POSITION MAPPING → Our Position enum
+// ============================================================
+
+const ESPN_POSITION_MAP: Record<string, Position> = {
+  QB: 'QB',
+  RB: 'RB',
+  FB: 'RB',
+  WR: 'WR',
+  TE: 'TE',
+  OL: 'OL', OT: 'OL', OG: 'OL', C: 'OL', G: 'OL', T: 'OL',
+  DL: 'DL', DE: 'DL', DT: 'DL', NT: 'DL',
+  LB: 'LB', OLB: 'LB', ILB: 'LB', MLB: 'LB',
+  CB: 'CB',
+  S: 'S', FS: 'S', SS: 'S', DB: 'S',
+  K: 'K', PK: 'K',
+  P: 'P', LS: 'P',
+};
+
+// ============================================================
+// NAME POOLS (fallback for missing ESPN data)
 // ============================================================
 
 const FIRST_NAMES = [
@@ -32,7 +62,7 @@ const LAST_NAMES = [
 ] as const;
 
 // ============================================================
-// ROSTER TEMPLATE
+// ROSTER TEMPLATE (defines position counts + rating ranges)
 // ============================================================
 
 interface RosterSlot {
@@ -145,7 +175,6 @@ function pickJerseyNumber(
     }
   }
   if (candidates.length === 0) {
-    // Fallback: any unused number 1-99
     for (let n = 1; n <= 99; n++) {
       if (!usedNumbers.has(n)) candidates.push(n);
     }
@@ -162,12 +191,76 @@ function pickName(rng: () => number): string {
 }
 
 // ============================================================
+// ESPN ROSTER FETCHING
+// ============================================================
+
+interface ESPNAthlete {
+  fullName: string;
+  jersey?: string;
+  position: { abbreviation: string };
+}
+
+interface ESPNRosterResponse {
+  athletes: Array<{
+    position: string;
+    items: ESPNAthlete[];
+  }>;
+}
+
+/**
+ * Fetch real roster from ESPN public API for a given team abbreviation.
+ * Returns null if the fetch fails (caller should fall back to generated names).
+ */
+async function fetchESPNRoster(teamAbbreviation: string): Promise<ESPNAthlete[] | null> {
+  const espnId = ESPN_TEAM_IDS[teamAbbreviation];
+  if (!espnId) return null;
+
+  try {
+    const url = `https://site.api.espn.com/apis/site/v2/sports/football/nfl/teams/${espnId}/roster`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+    if (!res.ok) return null;
+
+    const data = (await res.json()) as ESPNRosterResponse;
+    const allAthletes: ESPNAthlete[] = [];
+    for (const group of data.athletes ?? []) {
+      for (const athlete of group.items ?? []) {
+        allAthletes.push(athlete);
+      }
+    }
+    return allAthletes;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Map ESPN athletes to our position enum, grouped by position.
+ */
+function groupESPNByPosition(athletes: ESPNAthlete[]): Map<Position, ESPNAthlete[]> {
+  const grouped = new Map<Position, ESPNAthlete[]>();
+
+  for (const athlete of athletes) {
+    const espnPos = athlete.position?.abbreviation;
+    if (!espnPos) continue;
+
+    const ourPos = ESPN_POSITION_MAP[espnPos];
+    if (!ourPos) continue;
+
+    if (!grouped.has(ourPos)) grouped.set(ourPos, []);
+    grouped.get(ourPos)!.push(athlete);
+  }
+
+  return grouped;
+}
+
+// ============================================================
 // PUBLIC API
 // ============================================================
 
 /**
  * Generate a full ~26-player roster for a single team.
  * Deterministic: same teamIndex always produces the same roster.
+ * (Fallback when ESPN data is unavailable)
  */
 export function generatePlayersForTeam(
   teamAbbreviation: string,
@@ -182,6 +275,79 @@ export function generatePlayersForTeam(
     const number = pickJerseyNumber(rng, slot.position, usedNumbers);
     const rating = randInt(rng, slot.ratingMin, slot.ratingMax);
 
+    const speed = clamp(rating + randInt(rng, -8, 8), 60, 99);
+    const strength = clamp(rating + randInt(rng, -8, 8), 60, 99);
+    const awareness = clamp(rating + randInt(rng, -6, 6), 60, 99);
+    const clutchRating = clamp(rating + randInt(rng, -10, 10), 60, 99);
+    const injuryProne = rng() < 0.1;
+
+    players.push({
+      name,
+      position: slot.position,
+      number,
+      rating,
+      speed,
+      strength,
+      awareness,
+      clutchRating,
+      injuryProne,
+    });
+  }
+
+  return players;
+}
+
+/**
+ * Generate a roster using real ESPN player names.
+ * Falls back to generated names for any positions where ESPN data is missing.
+ * Ratings are still generated deterministically (seeded PRNG).
+ */
+export async function generatePlayersFromESPN(
+  teamAbbreviation: string,
+  teamIndex: number,
+): Promise<Omit<Player, 'id' | 'teamId'>[]> {
+  const espnAthletes = await fetchESPNRoster(teamAbbreviation);
+
+  if (!espnAthletes || espnAthletes.length === 0) {
+    return generatePlayersForTeam(teamAbbreviation, teamIndex);
+  }
+
+  const grouped = groupESPNByPosition(espnAthletes);
+  const rng = createRng((teamIndex + 1) * 7919);
+  const usedNumbers = new Set<number>();
+  const players: Omit<Player, 'id' | 'teamId'>[] = [];
+
+  // Track how many ESPN players we've consumed per position
+  const positionCursor = new Map<Position, number>();
+
+  for (const slot of ROSTER_TEMPLATE) {
+    const cursor = positionCursor.get(slot.position) ?? 0;
+    const espnPool = grouped.get(slot.position) ?? [];
+    const espnPlayer = espnPool[cursor];
+
+    positionCursor.set(slot.position, cursor + 1);
+
+    // Use ESPN name + jersey if available, otherwise fall back
+    let name: string;
+    let number: number;
+
+    if (espnPlayer) {
+      name = espnPlayer.fullName;
+      const espnJersey = espnPlayer.jersey ? parseInt(espnPlayer.jersey, 10) : NaN;
+
+      if (!isNaN(espnJersey) && espnJersey >= 0 && espnJersey <= 99 && !usedNumbers.has(espnJersey)) {
+        number = espnJersey;
+        usedNumbers.add(number);
+      } else {
+        number = pickJerseyNumber(rng, slot.position, usedNumbers);
+      }
+    } else {
+      name = pickName(rng);
+      number = pickJerseyNumber(rng, slot.position, usedNumbers);
+    }
+
+    // Ratings are always generated deterministically
+    const rating = randInt(rng, slot.ratingMin, slot.ratingMax);
     const speed = clamp(rating + randInt(rng, -8, 8), 60, 99);
     const strength = clamp(rating + randInt(rng, -8, 8), 60, 99);
     const awareness = clamp(rating + randInt(rng, -6, 6), 60, 99);

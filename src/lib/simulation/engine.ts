@@ -671,7 +671,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
           // which was the kicking team's "away" -- but we already flipped)
           playResult.scoring.team = scoringTeam;
           state.patAttempt = true;
-          state.ballPosition = 15; // PAT from the 15
+          state.ballPosition = 85; // PAT from the opponent's 15 (85 from own end zone)
           driveEndResult = 'touchdown';
         }
       }
@@ -790,7 +790,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
         }
 
         state.patAttempt = true;
-        state.ballPosition = 15; // PAT from the 15
+        state.ballPosition = 85; // PAT from the opponent's 15 (85 from own end zone)
         state.down = 1;
         state.yardsToGo = 10;
         needsNewDrive = true;
@@ -833,7 +833,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
           // The team that scored the defensive TD now gets a PAT
           state.possession = turnover.recoveredBy;
           state.patAttempt = true;
-          state.ballPosition = 15;
+          state.ballPosition = 85; // PAT from the opponent's 15 (85 from own end zone)
           state.down = 1;
           state.yardsToGo = 10;
           possessionChanged = true;
