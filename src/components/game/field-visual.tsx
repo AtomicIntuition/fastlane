@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { PlayResult, NarrativeSnapshot, PlayType } from '@/lib/simulation/types';
+import type { PlayResult, NarrativeSnapshot } from '@/lib/simulation/types';
 import { FieldSurface } from './field/field-surface';
 import { BallMarker } from './field/ball-marker';
 import { DownDistanceOverlay } from './field/down-distance-overlay';
-import { PlayAnimation } from './field/play-animation';
+import { PlayScene } from './field/play-scene';
 import { CoinFlip } from './field/coin-flip';
 import { CelebrationOverlay } from './field/celebration-overlay';
 import { DriveTrail } from './field/drive-trail';
@@ -150,18 +150,6 @@ export function FieldVisual({
     return null;
   }, [lastPlay]);
 
-  // ── Play animation coordinates ────────────────────────
-
-  const playFromPercent = prevBallLeft;
-  const playToPercent = ballLeft;
-  const playSuccess = useMemo(() => {
-    if (!lastPlay) return true;
-    if (lastPlay.type === 'pass_incomplete') return false;
-    if (lastPlay.type === 'field_goal' && !lastPlay.scoring) return false;
-    if (lastPlay.type === 'extra_point' && !lastPlay.scoring) return false;
-    return true;
-  }, [lastPlay]);
-
   // ── Coin flip state ───────────────────────────────────
 
   const [showCoinFlip, setShowCoinFlip] = useState(false);
@@ -221,6 +209,14 @@ export function FieldVisual({
   const isGoalLine = ballPosition >= 95;
 
   const showDriveTrail = !isKickoff && !isPatAttempt && gameStatus === 'live';
+
+  // ── PlayScene animation state ──────────────────────────
+  const [isPlayAnimating, setIsPlayAnimating] = useState(false);
+  const handlePlayAnimating = useCallback((animating: boolean) => {
+    setIsPlayAnimating(animating);
+  }, []);
+
+  const opposingTeam = possession === 'home' ? awayTeam : homeTeam;
 
   // ── Ball vertical position variety ─────────────────────
   const ballTopPercent = useMemo(() => {
@@ -285,21 +281,25 @@ export function FieldVisual({
             />
           </div>
 
-          {/* Ball marker */}
+          {/* Ball marker (hides during PlayScene animation) */}
           <BallMarker
             leftPercent={ballLeft}
             topPercent={ballTopPercent}
             direction={ballDirection}
             isKicking={!!isKicking}
+            hidden={isPlayAnimating}
           />
 
-          {/* Per-play-type animation */}
-          <PlayAnimation
-            playType={lastPlay?.type ?? null}
-            fromPercent={playFromPercent}
-            toPercent={playToPercent}
-            success={playSuccess}
+          {/* Play scene: player formations + animated ball trajectory */}
+          <PlayScene
+            ballLeftPercent={ballLeft}
+            prevBallLeftPercent={prevBallLeft}
+            possession={possession}
+            offenseColor={possessingTeam.primaryColor}
+            defenseColor={opposingTeam.primaryColor}
+            lastPlay={lastPlay}
             playKey={playKey}
+            onAnimating={handlePlayAnimating}
           />
 
           {/* Player name highlight */}

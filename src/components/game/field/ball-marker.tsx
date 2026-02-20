@@ -11,13 +11,15 @@ interface BallMarkerProps {
   direction: 'left' | 'right' | null;
   /** Whether a kick is in the air (punt/kickoff/FG) */
   isKicking: boolean;
+  /** When true, ball fades out (PlayScene is animating its own ball) */
+  hidden?: boolean;
 }
 
 /**
  * Football-shaped SVG ball marker with golden glow, shadow,
  * smooth CSS transitions, and directional tilt.
  */
-export function BallMarker({ leftPercent, topPercent = 50, direction, isKicking }: BallMarkerProps) {
+export function BallMarker({ leftPercent, topPercent = 50, direction, isKicking, hidden = false }: BallMarkerProps) {
   const [launching, setLaunching] = useState(false);
   const [snap, setSnap] = useState(false);
   const prevKicking = useRef(false);
@@ -50,8 +52,11 @@ export function BallMarker({ leftPercent, topPercent = 50, direction, isKicking 
       style={{
         left: `${leftPercent}%`,
         top: `${topPercent}%`,
-        transition: 'left 600ms cubic-bezier(0.34, 1.56, 0.64, 1), top 400ms ease-out',
+        transition: hidden
+          ? 'opacity 150ms ease-out'
+          : 'left 600ms cubic-bezier(0.34, 1.56, 0.64, 1), top 400ms ease-out, opacity 200ms ease-in',
         transform: `translate(-50%, -50%)${snap ? ' scale(1.15)' : ''}`,
+        opacity: hidden ? 0 : 1,
       }}
     >
       {/* Shadow beneath ball */}
