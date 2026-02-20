@@ -10,7 +10,6 @@ import { CoinFlip } from './field/coin-flip';
 import { CelebrationOverlay } from './field/celebration-overlay';
 import { DriveTrail } from './field/drive-trail';
 import { PlayerHighlight } from './field/player-highlight';
-import { Minimap } from './field/minimap';
 import { PlayCallOverlay } from './field/play-call-overlay';
 import { CrowdAtmosphere } from './field/crowd-atmosphere';
 import { FieldCommentaryOverlay } from './field/field-commentary-overlay';
@@ -34,29 +33,10 @@ interface FieldVisualProps {
   commentary?: { playByPlay: string; crowdReaction: string; excitement: number } | null;
 }
 
-// ── Zoom level by play type ──────────────────────────────
-function getZoomLevel(
-  lastPlay: PlayResult | null,
-  gameStatus: string,
-  isKickoff: boolean,
-): number {
-  if (gameStatus !== 'live') return 1.0;
-  if (!lastPlay) return 1.0;
-
-  const t = lastPlay.type;
-  if (isKickoff || t === 'kickoff') return 1.5;
-  if (t === 'punt') return 1.5;
-  if (t === 'field_goal' || t === 'extra_point') return 2.0;
-  if (t === 'pregame' || t === 'coin_toss') return 1.0;
-
-  // Normal plays: run, pass, sack, scramble
-  return 2.5;
-}
-
 /**
  * Immersive field visual — orchestrator component.
- * Manages perspective container, zoomed camera system, coordinate conversions,
- * animation state, and delegates rendering to specialized sub-components.
+ * Full-field view with formation-accurate player rendering,
+ * play-by-play overlays, and crowd atmosphere effects.
  */
 export function FieldVisual({
   ballPosition,
@@ -94,7 +74,6 @@ export function FieldVisual({
   );
   const absoluteDriveStartPct = toAbsolutePercent(driveStartPosition, possession);
 
-  // End zones take ~8.33% each side, playing field is ~83.33% in the middle
   const endZoneWidth = 8.33;
   const fieldStart = endZoneWidth;
   const fieldWidth = 100 - endZoneWidth * 2;
@@ -113,16 +92,6 @@ export function FieldVisual({
   const firstDownLeft = fieldStart + (absoluteFirstDownPct / 100) * fieldWidth;
   const driveStartLeft = fieldStart + (absoluteDriveStartPct / 100) * fieldWidth;
 
-  // ── Camera zoom system ─────────────────────────────────
-
-  const zoomLevel = useMemo(
-    () => getZoomLevel(lastPlay, gameStatus, isKickoff),
-    [lastPlay?.type, gameStatus, isKickoff] // eslint-disable-line react-hooks/exhaustive-deps
-  );
-
-  // Clamp camera origin so we don't show past field edges
-  const clampedBallX = Math.max(22, Math.min(78, ballLeft));
-
   // ── Play tracking for animations ──────────────────────
 
   const [playKey, setPlayKey] = useState(0);
@@ -131,7 +100,6 @@ export function FieldVisual({
   const prevPlayRef = useRef<PlayResult | null>(null);
   const [prevBallLeft, setPrevBallLeft] = useState(ballLeft);
 
-  // Track previous ball position for direction detection
   const ballDirection = useMemo<'left' | 'right' | null>(() => {
     const diff = ballLeft - prevBallLeft;
     if (Math.abs(diff) < 0.5) return null;
@@ -148,7 +116,6 @@ export function FieldVisual({
     prevPlayRef.current = lastPlay;
     setPlayKey((k) => k + 1);
 
-    // Trigger celebration?
     if (lastPlay.isTouchdown) {
       setCelebKey((k) => k + 1);
     } else if (lastPlay.turnover) {
@@ -159,7 +126,6 @@ export function FieldVisual({
       setCelebKey((k) => k + 1);
     }
 
-    // Trigger player highlight on big plays
     const isBigPlay =
       lastPlay.isTouchdown ||
       lastPlay.turnover != null ||
@@ -189,10 +155,7 @@ export function FieldVisual({
   const coinFlipShownRef = useRef(false);
 
   useEffect(() => {
-    if (
-      lastPlay?.type === 'coin_toss' &&
-      !coinFlipShownRef.current
-    ) {
+    if (lastPlay?.type === 'coin_toss' && !coinFlipShownRef.current) {
       setShowCoinFlip(true);
       coinFlipShownRef.current = true;
     }
@@ -202,7 +165,7 @@ export function FieldVisual({
     setShowCoinFlip(false);
   }, []);
 
-  // ── Kicking detection for ball launch ─────────────────
+  // ── Kicking detection ─────────────────────────────────
 
   const isKicking =
     lastPlay?.type === 'punt' ||
@@ -239,7 +202,6 @@ export function FieldVisual({
   const possessingTeam = possession === 'home' ? homeTeam : awayTeam;
   const isRedZone = ballPosition >= 80;
   const isGoalLine = ballPosition >= 95;
-
   const showDriveTrail = !isKickoff && !isPatAttempt && gameStatus === 'live';
 
   // ── PlayScene animation state ──────────────────────────
@@ -267,21 +229,33 @@ export function FieldVisual({
         return 55;
       case 'scramble':
         return 40 + (lastPlay.yardsGained % 6) * 3;
-      case 'kickoff':
-      case 'punt':
-      case 'field_goal':
-      case 'extra_point':
-      case 'touchback':
-        return 50;
       default:
         return 50;
     }
   }, [lastPlay]);
 
+  // ── Measure container aspect ratio for round dots ──────
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [aspectRatio, setAspectRatio] = useState(2.5);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      const { width, height } = el.getBoundingClientRect();
+      if (height > 0) setAspectRatio(width / height);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
     <div className="w-full px-2 py-2">
       <div
-        className="field-container relative w-full h-[280px] sm:h-[380px] lg:h-[480px] xl:h-[540px] rounded-xl overflow-hidden border border-white/10"
+        ref={containerRef}
+        className="field-container relative w-full h-[240px] sm:h-[320px] lg:h-[400px] xl:h-[440px] rounded-xl overflow-hidden border border-white/10"
         role="img"
         aria-label={`Football field. Ball at the ${ballPosition} yard line. ${down}${
           down === 1 ? 'st' : down === 2 ? 'nd' : down === 3 ? 'rd' : 'th'
@@ -289,77 +263,66 @@ export function FieldVisual({
       >
         {/* Perspective wrapper for 3D depth effect */}
         <div className="field-perspective absolute inset-0">
-          {/* Camera wrapper — zooms into the action area */}
-          <div
-            className="field-camera"
-            style={{
-              transform: `scale(${zoomLevel})`,
-              transformOrigin: `${clampedBallX}% 50%`,
-              transition: 'transform 800ms ease-out, transform-origin 800ms ease-out',
-              width: '100%',
-              height: '100%',
-            }}
-          >
-            {/* SVG field surface (grass, lines, end zones) */}
-            <FieldSurface homeTeam={homeTeam} awayTeam={awayTeam} possession={possession} />
+          {/* SVG field surface (grass, lines, end zones) */}
+          <FieldSurface homeTeam={homeTeam} awayTeam={awayTeam} possession={possession} />
 
-            {/* Down & distance overlay (yellow zone, LOS, first-down line) */}
-            <div className="absolute inset-0">
-              <DownDistanceOverlay
-                ballLeftPercent={ballLeft}
-                firstDownLeftPercent={firstDownLeft}
-                down={down}
-                yardsToGo={yardsToGo}
-                isRedZone={isRedZone}
-                isGoalLine={isGoalLine}
-                possession={possession}
-              />
-            </div>
-
-            {/* Drive trail */}
-            <div className="absolute inset-0">
-              <DriveTrail
-                driveStartPercent={driveStartLeft}
-                ballPercent={ballLeft}
-                teamColor={possessingTeam.primaryColor}
-                visible={showDriveTrail}
-              />
-            </div>
-
-            {/* Ball marker (hides during PlayScene animation) */}
-            <BallMarker
-              leftPercent={ballLeft}
-              topPercent={ballTopPercent}
-              direction={ballDirection}
-              isKicking={!!isKicking}
-              hidden={isPlayAnimating}
-            />
-
-            {/* Play scene: player formations + animated ball trajectory */}
-            <PlayScene
+          {/* Down & distance overlay */}
+          <div className="absolute inset-0">
+            <DownDistanceOverlay
               ballLeftPercent={ballLeft}
-              prevBallLeftPercent={prevBallLeft}
+              firstDownLeftPercent={firstDownLeft}
+              down={down}
+              yardsToGo={yardsToGo}
+              isRedZone={isRedZone}
+              isGoalLine={isGoalLine}
               possession={possession}
-              offenseColor={possessingTeam.primaryColor}
-              defenseColor={opposingTeam.primaryColor}
-              lastPlay={lastPlay}
-              playKey={playKey}
-              onAnimating={handlePlayAnimating}
-              onPhaseChange={handlePhaseChange}
-            />
-
-            {/* Player name highlight */}
-            <PlayerHighlight
-              playerName={highlightPlayer.name}
-              jerseyNumber={highlightPlayer.number}
-              teamColor={possessingTeam.primaryColor}
-              ballPercent={ballLeft}
-              highlightKey={highlightKey}
             />
           </div>
+
+          {/* Drive trail */}
+          <div className="absolute inset-0">
+            <DriveTrail
+              driveStartPercent={driveStartLeft}
+              ballPercent={ballLeft}
+              teamColor={possessingTeam.primaryColor}
+              visible={showDriveTrail}
+            />
+          </div>
+
+          {/* Ball marker (hides during PlayScene animation) */}
+          <BallMarker
+            leftPercent={ballLeft}
+            topPercent={ballTopPercent}
+            direction={ballDirection}
+            isKicking={!!isKicking}
+            hidden={isPlayAnimating}
+          />
+
+          {/* Play scene: player dots + animated ball trajectory */}
+          <PlayScene
+            ballLeftPercent={ballLeft}
+            prevBallLeftPercent={prevBallLeft}
+            possession={possession}
+            offenseColor={possessingTeam.primaryColor}
+            defenseColor={opposingTeam.primaryColor}
+            lastPlay={lastPlay}
+            playKey={playKey}
+            onAnimating={handlePlayAnimating}
+            onPhaseChange={handlePhaseChange}
+            aspectRatio={aspectRatio}
+          />
+
+          {/* Player name highlight */}
+          <PlayerHighlight
+            playerName={highlightPlayer.name}
+            jerseyNumber={highlightPlayer.number}
+            teamColor={possessingTeam.primaryColor}
+            ballPercent={ballLeft}
+            highlightKey={highlightKey}
+          />
         </div>
 
-        {/* Play call overlay — outside camera so it doesn't zoom */}
+        {/* Play call overlay */}
         <PlayCallOverlay
           formation={lastPlay?.formation ?? null}
           defensiveCall={lastPlay?.defensiveCall ?? null}
@@ -367,7 +330,7 @@ export function FieldVisual({
           visible={playPhase === 'pre_snap'}
         />
 
-        {/* Crowd atmosphere edge effects — outside camera */}
+        {/* Crowd atmosphere edge effects */}
         <CrowdAtmosphere
           crowdReaction={commentary?.crowdReaction ?? null}
           excitement={commentary?.excitement ?? 0}
@@ -379,20 +342,6 @@ export function FieldVisual({
           lastPlay={lastPlay}
         />
 
-        {/* Minimap — shows full-field context when zoomed */}
-        {zoomLevel > 1.2 && (
-          <Minimap
-            ballLeftPercent={ballLeft}
-            firstDownLeftPercent={firstDownLeft}
-            driveStartPercent={driveStartLeft}
-            viewportCenter={clampedBallX}
-            zoomLevel={zoomLevel}
-            homeTeam={homeTeam}
-            awayTeam={awayTeam}
-            possession={possession}
-          />
-        )}
-
         {/* Coin flip overlay */}
         <CoinFlip
           show={showCoinFlip}
@@ -400,7 +349,7 @@ export function FieldVisual({
           onComplete={handleCoinFlipComplete}
         />
 
-        {/* Celebration overlay (TD confetti, turnover shake, etc.) — outside camera */}
+        {/* Celebration overlay */}
         <CelebrationOverlay
           type={celebType}
           teamColor={possessingTeam.primaryColor}
