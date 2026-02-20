@@ -1,24 +1,38 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { getTeamLogoUrl } from '@/lib/utils/team-logos';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import type { PlayResult, NarrativeSnapshot, PlayType } from '@/lib/simulation/types';
+import { FieldSurface } from './field/field-surface';
+import { BallMarker } from './field/ball-marker';
+import { DownDistanceOverlay } from './field/down-distance-overlay';
+import { PlayAnimation } from './field/play-animation';
+import { CoinFlip } from './field/coin-flip';
+import { CelebrationOverlay } from './field/celebration-overlay';
+import { DriveTrail } from './field/drive-trail';
+import { PlayerHighlight } from './field/player-highlight';
 
 interface FieldVisualProps {
   ballPosition: number;
   firstDownLine: number;
   possession: 'home' | 'away';
-  homeTeam: { abbreviation: string; primaryColor: string };
-  awayTeam: { abbreviation: string; primaryColor: string };
+  homeTeam: { abbreviation: string; primaryColor: string; secondaryColor: string };
+  awayTeam: { abbreviation: string; primaryColor: string; secondaryColor: string };
+  down: 1 | 2 | 3 | 4;
+  yardsToGo: number;
+  quarter: number | 'OT';
+  clock: number;
+  lastPlay: PlayResult | null;
+  isKickoff: boolean;
+  isPatAttempt: boolean;
+  gameStatus: 'pregame' | 'live' | 'halftime' | 'game_over';
+  driveStartPosition: number;
+  narrativeContext: NarrativeSnapshot | null;
 }
 
 /**
- * Simplified horizontal football field showing ball position,
- * first down line, end zones, and red zone shading.
- *
- * Ball position is 0-100 from the possessing team's own end zone.
- * We convert to an absolute field position for rendering where:
- *   - Left end zone = away team's end zone
- *   - Right end zone = home team's end zone
+ * Immersive field visual — orchestrator component.
+ * Manages perspective container, coordinate conversions, animation state,
+ * and delegates rendering to specialized sub-components.
  */
 export function FieldVisual({
   ballPosition,
@@ -26,21 +40,19 @@ export function FieldVisual({
   possession,
   homeTeam,
   awayTeam,
+  down,
+  yardsToGo,
+  quarter,
+  lastPlay,
+  isKickoff,
+  isPatAttempt,
+  gameStatus,
+  driveStartPosition,
 }: FieldVisualProps) {
-  const fieldRef = useRef<HTMLDivElement>(null);
-  const [prevBallPct, setPrevBallPct] = useState<number | null>(null);
+  // ── Coordinate conversion ─────────────────────────────
 
-  // Convert possession-relative position (0-100) to absolute field percentage
-  // where 0% = far left (away endzone) and 100% = far right (home endzone)
   const toAbsolutePercent = (pos: number, team: 'home' | 'away'): number => {
-    if (team === 'home') {
-      // Home team: their own 0 is the right endzone (100%), their 100 is the left (0%)
-      // Actually: home 0 = home's own goal line (right side), moving toward away endzone
-      // So home's own 25 means 25 yards from right side = 75% from left
-      return 100 - pos;
-    }
-    // Away team: their own 0 is the left endzone (0%), their 100 is the right (100%)
-    return pos;
+    return team === 'home' ? 100 - pos : pos;
   };
 
   const absoluteBallPct = toAbsolutePercent(ballPosition, possession);
@@ -48,8 +60,8 @@ export function FieldVisual({
     Math.min(firstDownLine, 100),
     possession
   );
+  const absoluteDriveStartPct = toAbsolutePercent(driveStartPosition, possession);
 
-  // Ball position within the playing field (between end zones)
   // End zones take ~8.33% each side, playing field is ~83.33% in the middle
   const endZoneWidth = 8.33;
   const fieldStart = endZoneWidth;
@@ -57,166 +69,217 @@ export function FieldVisual({
 
   const ballLeft = fieldStart + (absoluteBallPct / 100) * fieldWidth;
   const firstDownLeft = fieldStart + (absoluteFirstDownPct / 100) * fieldWidth;
+  const driveStartLeft = fieldStart + (absoluteDriveStartPct / 100) * fieldWidth;
 
-  // Red zone detection (inside opponent's 20)
-  const isInRedZone = ballPosition >= 80;
-  const redZoneStart =
-    possession === 'home'
-      ? fieldStart + (80 / 100) * fieldWidth // Away's 20 from left
-      : fieldStart;
-  const redZoneEnd =
-    possession === 'home'
-      ? fieldStart + fieldWidth
-      : fieldStart + (20 / 100) * fieldWidth;
+  // ── Play tracking for animations ──────────────────────
 
-  // Track previous position for ball animation
+  const [playKey, setPlayKey] = useState(0);
+  const [celebKey, setCelebKey] = useState(0);
+  const [highlightKey, setHighlightKey] = useState(0);
+  const prevPlayRef = useRef<PlayResult | null>(null);
+  const [prevBallLeft, setPrevBallLeft] = useState(ballLeft);
+
+  // Track previous ball position for direction detection
+  const ballDirection = useMemo<'left' | 'right' | null>(() => {
+    const diff = ballLeft - prevBallLeft;
+    if (Math.abs(diff) < 0.5) return null;
+    return diff > 0 ? 'right' : 'left';
+  }, [ballLeft, prevBallLeft]);
+
   useEffect(() => {
-    setPrevBallPct(absoluteBallPct);
-  }, [absoluteBallPct]);
+    setPrevBallLeft(ballLeft);
+  }, [ballLeft]);
 
-  const yardNumbers = [10, 20, 30, 40, 50, 40, 30, 20, 10];
+  // Detect new play
+  useEffect(() => {
+    if (!lastPlay || lastPlay === prevPlayRef.current) return;
+    prevPlayRef.current = lastPlay;
+    setPlayKey((k) => k + 1);
+
+    // Trigger celebration?
+    if (lastPlay.isTouchdown) {
+      setCelebKey((k) => k + 1);
+    } else if (lastPlay.turnover) {
+      setCelebKey((k) => k + 1);
+    } else if (lastPlay.isSafety) {
+      setCelebKey((k) => k + 1);
+    } else if (lastPlay.type === 'field_goal' && lastPlay.scoring) {
+      setCelebKey((k) => k + 1);
+    }
+
+    // Trigger player highlight on big plays
+    const isBigPlay =
+      lastPlay.isTouchdown ||
+      lastPlay.turnover != null ||
+      lastPlay.type === 'sack' ||
+      (lastPlay.type === 'pass_complete' && lastPlay.yardsGained > 20) ||
+      (lastPlay.type === 'run' && lastPlay.yardsGained > 15);
+
+    if (isBigPlay) {
+      setHighlightKey((k) => k + 1);
+    }
+  }, [lastPlay]);
+
+  // ── Celebration type ──────────────────────────────────
+
+  const celebType = useMemo(() => {
+    if (!lastPlay) return null;
+    if (lastPlay.isTouchdown) return 'touchdown' as const;
+    if (lastPlay.turnover) return 'turnover' as const;
+    if (lastPlay.isSafety) return 'safety' as const;
+    if (lastPlay.type === 'field_goal' && lastPlay.scoring) return 'field_goal' as const;
+    return null;
+  }, [lastPlay]);
+
+  // ── Play animation coordinates ────────────────────────
+
+  const playFromPercent = prevBallLeft;
+  const playToPercent = ballLeft;
+  const playSuccess = useMemo(() => {
+    if (!lastPlay) return true;
+    if (lastPlay.type === 'pass_incomplete') return false;
+    if (lastPlay.type === 'field_goal' && !lastPlay.scoring) return false;
+    if (lastPlay.type === 'extra_point' && !lastPlay.scoring) return false;
+    return true;
+  }, [lastPlay]);
+
+  // ── Coin flip state ───────────────────────────────────
+
+  const [showCoinFlip, setShowCoinFlip] = useState(false);
+  const coinFlipShownRef = useRef(false);
+
+  useEffect(() => {
+    if (
+      isKickoff &&
+      quarter === 1 &&
+      !lastPlay &&
+      gameStatus === 'live' &&
+      !coinFlipShownRef.current
+    ) {
+      setShowCoinFlip(true);
+      coinFlipShownRef.current = true;
+    }
+  }, [isKickoff, quarter, lastPlay, gameStatus]);
+
+  const handleCoinFlipComplete = useCallback(() => {
+    setShowCoinFlip(false);
+  }, []);
+
+  // ── Kicking detection for ball launch ─────────────────
+
+  const isKicking =
+    lastPlay?.type === 'punt' ||
+    lastPlay?.type === 'kickoff' ||
+    lastPlay?.type === 'field_goal' ||
+    lastPlay?.type === 'extra_point';
+
+  // ── Player highlight data ─────────────────────────────
+
+  const highlightPlayer = useMemo(() => {
+    if (!lastPlay) return { name: null, number: null };
+    if (lastPlay.isTouchdown) {
+      const p = lastPlay.receiver ?? lastPlay.rusher ?? lastPlay.passer;
+      return { name: p?.name ?? null, number: null };
+    }
+    if (lastPlay.turnover) {
+      const p = lastPlay.defender ?? lastPlay.passer;
+      return { name: p?.name ?? null, number: null };
+    }
+    if (lastPlay.type === 'sack') {
+      return { name: lastPlay.defender?.name ?? null, number: null };
+    }
+    if (lastPlay.type === 'pass_complete' && lastPlay.yardsGained > 20) {
+      return { name: lastPlay.receiver?.name ?? null, number: null };
+    }
+    if (lastPlay.type === 'run' && lastPlay.yardsGained > 15) {
+      return { name: lastPlay.rusher?.name ?? null, number: null };
+    }
+    return { name: null, number: null };
+  }, [lastPlay]);
+
+  // ── Possessing team data ──────────────────────────────
+
+  const possessingTeam = possession === 'home' ? homeTeam : awayTeam;
+  const isRedZone = ballPosition >= 80;
+  const isGoalLine = ballPosition >= 95;
+
+  const showDriveTrail = !isKickoff && !isPatAttempt && gameStatus === 'live';
 
   return (
     <div className="w-full px-2 py-2">
       <div
-        ref={fieldRef}
-        className="relative w-full h-12 sm:h-16 rounded-lg overflow-hidden field-gradient border border-white/10"
+        className="field-container relative w-full h-[240px] sm:h-[320px] lg:h-[400px] xl:h-[440px] rounded-xl overflow-hidden border border-white/10"
         role="img"
-        aria-label={`Football field. Ball at the ${ballPosition} yard line.`}
+        aria-label={`Football field. Ball at the ${ballPosition} yard line. ${down}${
+          down === 1 ? 'st' : down === 2 ? 'nd' : down === 3 ? 'rd' : 'th'
+        } and ${yardsToGo}.`}
       >
-        {/* End zones */}
-        <div
-          className="absolute left-0 top-0 bottom-0 flex items-center justify-center"
-          style={{
-            width: `${endZoneWidth}%`,
-            backgroundColor: awayTeam.primaryColor,
-            opacity: 0.7,
-          }}
-        >
-          <img
-            src={getTeamLogoUrl(awayTeam.abbreviation)}
-            alt={awayTeam.abbreviation}
-            className="w-6 h-6 sm:w-8 sm:h-8 object-contain opacity-80 drop-shadow-md"
-          />
-        </div>
-        <div
-          className="absolute right-0 top-0 bottom-0 flex items-center justify-center"
-          style={{
-            width: `${endZoneWidth}%`,
-            backgroundColor: homeTeam.primaryColor,
-            opacity: 0.7,
-          }}
-        >
-          <img
-            src={getTeamLogoUrl(homeTeam.abbreviation)}
-            alt={homeTeam.abbreviation}
-            className="w-6 h-6 sm:w-8 sm:h-8 object-contain opacity-80 drop-shadow-md"
-          />
-        </div>
+        {/* Perspective wrapper for 3D depth effect */}
+        <div className="field-perspective absolute inset-0">
+          {/* SVG field surface (grass, lines, end zones) */}
+          <FieldSurface homeTeam={homeTeam} awayTeam={awayTeam} />
 
-        {/* Yard lines every 10 yards (9 lines: 10, 20, 30, 40, 50, 60, 70, 80, 90) */}
-        {Array.from({ length: 9 }, (_, i) => {
-          const yardLine = (i + 1) * 10; // 10..90
-          const leftPct = fieldStart + (yardLine / 100) * fieldWidth;
-          return (
-            <div
-              key={yardLine}
-              className="absolute top-0 bottom-0 w-px"
-              style={{
-                left: `${leftPct}%`,
-                backgroundColor:
-                  yardLine === 50
-                    ? 'rgba(255,255,255,0.35)'
-                    : 'rgba(255,255,255,0.15)',
-              }}
+          {/* Down & distance overlay (yellow zone, LOS, first-down line) */}
+          <div className="absolute inset-0">
+            <DownDistanceOverlay
+              ballLeftPercent={ballLeft}
+              firstDownLeftPercent={firstDownLeft}
+              down={down}
+              yardsToGo={yardsToGo}
+              isRedZone={isRedZone}
+              isGoalLine={isGoalLine}
+              possession={possession}
             />
-          );
-        })}
+          </div>
 
-        {/* Yard numbers */}
-        {yardNumbers.map((num, i) => {
-          const yardLine = (i + 1) * 10;
-          const leftPct = fieldStart + (yardLine / 100) * fieldWidth;
-          return (
-            <span
-              key={`num-${i}`}
-              className="absolute text-[7px] sm:text-[9px] font-bold text-white/20 select-none pointer-events-none"
-              style={{
-                left: `${leftPct}%`,
-                transform: 'translateX(-50%)',
-                bottom: '2px',
-              }}
-            >
-              {num}
-            </span>
-          );
-        })}
+          {/* Drive trail */}
+          <div className="absolute inset-0">
+            <DriveTrail
+              driveStartPercent={driveStartLeft}
+              ballPercent={ballLeft}
+              teamColor={possessingTeam.primaryColor}
+              visible={showDriveTrail}
+            />
+          </div>
 
-        {/* Red zone shading */}
-        {isInRedZone && (
-          <div
-            className="absolute top-0 bottom-0 pointer-events-none"
-            style={{
-              left: `${Math.min(redZoneStart, redZoneEnd)}%`,
-              width: `${Math.abs(redZoneEnd - redZoneStart)}%`,
-              background: 'rgba(239, 68, 68, 0.1)',
-            }}
+          {/* Ball marker */}
+          <BallMarker
+            leftPercent={ballLeft}
+            direction={ballDirection}
+            isKicking={!!isKicking}
           />
-        )}
 
-        {/* First down line marker (yellow) */}
-        {firstDownLine <= 100 && (
-          <div
-            className="absolute top-0 bottom-0 w-0.5 pointer-events-none"
-            style={{
-              left: `${firstDownLeft}%`,
-              backgroundColor: '#fbbf24',
-              boxShadow: '0 0 6px rgba(251, 191, 36, 0.5)',
-              transform: 'translateX(-50%)',
-            }}
+          {/* Per-play-type animation */}
+          <PlayAnimation
+            playType={lastPlay?.type ?? null}
+            fromPercent={playFromPercent}
+            toPercent={playToPercent}
+            success={playSuccess}
+            playKey={playKey}
           />
-        )}
 
-        {/* Ball marker */}
-        <div
-          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 z-10 ball-marker"
-          style={
-            {
-              left: `${ballLeft}%`,
-              '--ball-from': prevBallPct !== null ? `${((prevBallPct - absoluteBallPct) / 100) * (fieldRef.current?.offsetWidth ?? 0)}px` : '0px',
-              '--ball-to': '0px',
-            } as React.CSSProperties
-          }
-        >
-          {/* Outer glow */}
-          <div
-            className="absolute inset-0 rounded-full blur-sm"
-            style={{
-              width: '16px',
-              height: '16px',
-              backgroundColor: 'rgba(251, 191, 36, 0.4)',
-              transform: 'translate(-25%, -25%)',
-            }}
-          />
-          {/* Ball dot */}
-          <div
-            className="relative w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full border-2 border-white shadow-lg"
-            style={{
-              backgroundColor: '#fbbf24',
-              boxShadow: '0 0 8px rgba(251, 191, 36, 0.6), 0 0 16px rgba(251, 191, 36, 0.3)',
-            }}
+          {/* Player name highlight */}
+          <PlayerHighlight
+            playerName={highlightPlayer.name}
+            jerseyNumber={highlightPlayer.number}
+            teamColor={possessingTeam.primaryColor}
+            ballPercent={ballLeft}
+            highlightKey={highlightKey}
           />
         </div>
 
-        {/* Line of scrimmage (blue) */}
-        <div
-          className="absolute top-0 bottom-0 w-0.5 pointer-events-none"
-          style={{
-            left: `${ballLeft}%`,
-            backgroundColor: '#3b82f6',
-            opacity: 0.6,
-            transform: 'translateX(-50%)',
-          }}
+        {/* Coin flip overlay */}
+        <CoinFlip
+          show={showCoinFlip}
+          winningTeam={possession === 'home' ? homeTeam.abbreviation : awayTeam.abbreviation}
+          onComplete={handleCoinFlipComplete}
+        />
+
+        {/* Celebration overlay (TD confetti, turnover shake, etc.) */}
+        <CelebrationOverlay
+          type={celebType}
+          teamColor={possessingTeam.primaryColor}
+          celebKey={celebKey}
         />
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { NarrativeSnapshot } from '@/lib/simulation/types';
@@ -72,39 +72,21 @@ export function GameViewer({ gameId }: GameViewerProps) {
       : null
   );
 
-  // Celebration / alert overlay state
-  const [celebrationClass, setCelebrationClass] = useState('');
-  const prevEventCount = useRef(0);
-
-  // Detect touchdowns and turnovers for visual effects
-  useEffect(() => {
-    if (events.length <= prevEventCount.current) {
-      prevEventCount.current = events.length;
-      return;
+  // Derive driveStartPosition from events
+  const driveStartPosition = useMemo(() => {
+    if (events.length === 0 || !gameState) return gameState?.ballPosition ?? 25;
+    const currentDrive = events[events.length - 1].driveNumber;
+    // Find first event of this drive — the ball position is post-play,
+    // so the drive started at the previous drive's end position or kickoff
+    for (let i = 0; i < events.length; i++) {
+      if (events[i].driveNumber === currentDrive) {
+        if (i === 0) return events[0].gameState.ballPosition;
+        // Previous event's ball position is where this drive started
+        return events[i - 1].gameState.ballPosition;
+      }
     }
-
-    const latestEvent = events[events.length - 1];
-    if (!latestEvent) {
-      prevEventCount.current = events.length;
-      return;
-    }
-
-    if (latestEvent.playResult.isTouchdown) {
-      setCelebrationClass('touchdown-celebration');
-      const t = setTimeout(() => setCelebrationClass(''), 1300);
-      prevEventCount.current = events.length;
-      return () => clearTimeout(t);
-    }
-
-    if (latestEvent.playResult.turnover) {
-      setCelebrationClass('turnover-alert');
-      const t = setTimeout(() => setCelebrationClass(''), 900);
-      prevEventCount.current = events.length;
-      return () => clearTimeout(t);
-    }
-
-    prevEventCount.current = events.length;
-  }, [events]);
+    return gameState.ballPosition;
+  }, [events, gameState]);
 
   // ── Connecting / Error state ──────────────────────────────
 
@@ -137,7 +119,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
 
   if (status === 'game_over' && gameState) {
     return (
-      <div className={`min-h-dvh ${celebrationClass}`}>
+      <div className="min-h-dvh">
         <GameNav />
         <GameOverSummary
           homeTeam={gameState.homeTeam}
@@ -163,7 +145,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
   const isCatchup = status === 'catchup';
 
   return (
-    <div className={`flex flex-col min-h-dvh ${celebrationClass}`}>
+    <div className="flex flex-col min-h-dvh">
       {/* ── Mobile Layout ── */}
       <div className="flex flex-col h-dvh lg:hidden">
         {/* Navigation bar */}
@@ -200,11 +182,23 @@ export function GameViewer({ gameId }: GameViewerProps) {
             homeTeam={{
               abbreviation: gameState.homeTeam.abbreviation,
               primaryColor: gameState.homeTeam.primaryColor,
+              secondaryColor: gameState.homeTeam.secondaryColor,
             }}
             awayTeam={{
               abbreviation: gameState.awayTeam.abbreviation,
               primaryColor: gameState.awayTeam.primaryColor,
+              secondaryColor: gameState.awayTeam.secondaryColor,
             }}
+            down={gameState.down}
+            yardsToGo={gameState.yardsToGo}
+            quarter={gameState.quarter}
+            clock={gameState.clock}
+            lastPlay={currentEvent?.playResult ?? null}
+            isKickoff={gameState.kickoff}
+            isPatAttempt={gameState.patAttempt}
+            gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
+            driveStartPosition={driveStartPosition}
+            narrativeContext={currentEvent?.narrativeContext ?? null}
           />
 
           <MomentumMeter
@@ -262,11 +256,23 @@ export function GameViewer({ gameId }: GameViewerProps) {
                 homeTeam={{
                   abbreviation: gameState.homeTeam.abbreviation,
                   primaryColor: gameState.homeTeam.primaryColor,
+                  secondaryColor: gameState.homeTeam.secondaryColor,
                 }}
                 awayTeam={{
                   abbreviation: gameState.awayTeam.abbreviation,
                   primaryColor: gameState.awayTeam.primaryColor,
+                  secondaryColor: gameState.awayTeam.secondaryColor,
                 }}
+                down={gameState.down}
+                yardsToGo={gameState.yardsToGo}
+                quarter={gameState.quarter}
+                clock={gameState.clock}
+                lastPlay={currentEvent?.playResult ?? null}
+                isKickoff={gameState.kickoff}
+                isPatAttempt={gameState.patAttempt}
+                gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
+                driveStartPosition={driveStartPosition}
+                narrativeContext={currentEvent?.narrativeContext ?? null}
               />
               <MomentumMeter
                 momentum={momentum}
@@ -643,7 +649,7 @@ function ConnectingScreen() {
     <div className="min-h-dvh flex flex-col">
       {/* Field skeleton */}
       <div className="px-2 py-2">
-        <Skeleton variant="rectangular" className="w-full h-12 sm:h-16" />
+        <Skeleton variant="rectangular" className="w-full h-[240px] sm:h-[320px] lg:h-[400px] rounded-xl" />
       </div>
 
       {/* Momentum skeleton */}

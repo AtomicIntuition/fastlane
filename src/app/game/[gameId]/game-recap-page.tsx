@@ -179,8 +179,18 @@ function GamePlaysView({
             ballPosition={gameState.ballPosition}
             firstDownLine={firstDownLine}
             possession={gameState.possession}
-            homeTeam={{ abbreviation: homeTeam.abbreviation, primaryColor: homeTeam.primaryColor }}
-            awayTeam={{ abbreviation: awayTeam.abbreviation, primaryColor: awayTeam.primaryColor }}
+            homeTeam={{ abbreviation: homeTeam.abbreviation, primaryColor: homeTeam.primaryColor, secondaryColor: homeTeam.secondaryColor }}
+            awayTeam={{ abbreviation: awayTeam.abbreviation, primaryColor: awayTeam.primaryColor, secondaryColor: awayTeam.secondaryColor }}
+            down={gameState.down}
+            yardsToGo={gameState.yardsToGo}
+            quarter={gameState.quarter}
+            clock={gameState.clock}
+            lastPlay={events.length > 0 ? events[events.length - 1].playResult : null}
+            isKickoff={gameState.kickoff}
+            isPatAttempt={gameState.patAttempt}
+            gameStatus="game_over"
+            driveStartPosition={gameState.ballPosition}
+            narrativeContext={null}
           />
 
           <MomentumMeter
@@ -225,8 +235,18 @@ function GamePlaysView({
                 ballPosition={gameState.ballPosition}
                 firstDownLine={firstDownLine}
                 possession={gameState.possession}
-                homeTeam={{ abbreviation: homeTeam.abbreviation, primaryColor: homeTeam.primaryColor }}
-                awayTeam={{ abbreviation: awayTeam.abbreviation, primaryColor: awayTeam.primaryColor }}
+                homeTeam={{ abbreviation: homeTeam.abbreviation, primaryColor: homeTeam.primaryColor, secondaryColor: homeTeam.secondaryColor }}
+                awayTeam={{ abbreviation: awayTeam.abbreviation, primaryColor: awayTeam.primaryColor, secondaryColor: awayTeam.secondaryColor }}
+                down={gameState.down}
+                yardsToGo={gameState.yardsToGo}
+                quarter={gameState.quarter}
+                clock={gameState.clock}
+                lastPlay={events.length > 0 ? events[events.length - 1].playResult : null}
+                isKickoff={gameState.kickoff}
+                isPatAttempt={gameState.patAttempt}
+                gameStatus="game_over"
+                driveStartPosition={gameState.ballPosition}
+                narrativeContext={null}
               />
               <MomentumMeter
                 momentum={momentum}
