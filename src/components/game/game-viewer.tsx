@@ -145,13 +145,10 @@ export function GameViewer({ gameId }: GameViewerProps) {
   const isCatchup = status === 'catchup';
 
   return (
-    <div className="flex flex-col min-h-dvh">
-      {/* ── Unified Layout (mobile + desktop) ── */}
-      <div className="flex flex-col h-dvh">
-        {/* Navigation bar */}
+    <div className="min-h-dvh flex flex-col">
+      {/* ── Sticky header: Nav + ScoreBug ── */}
+      <div className="sticky top-0 z-40 flex-shrink-0">
         <GameNav />
-
-        {/* Scoreboard at top */}
         <ScoreBug
           gameState={gameState}
           status={status === 'game_over' ? 'game_over' : 'live'}
@@ -159,78 +156,78 @@ export function GameViewer({ gameId }: GameViewerProps) {
 
         {/* Banners */}
         {isCatchup && (
-          <div className="bg-info/10 border-b border-info/20 px-3 py-1 text-center flex-shrink-0">
+          <div className="bg-info/10 border-b border-info/20 px-3 py-1 text-center">
             <span className="text-[11px] sm:text-xs text-info font-semibold">
               Catching up to live...
             </span>
           </div>
         )}
         {error && status !== 'error' && (
-          <div className="bg-danger/10 border-b border-danger/20 px-3 py-1 flex items-center justify-between flex-shrink-0">
+          <div className="bg-danger/10 border-b border-danger/20 px-3 py-1 flex items-center justify-between">
             <span className="text-[11px] text-danger font-medium">{error}</span>
             <button onClick={reconnect} className="text-[10px] text-danger font-bold underline">
               Retry
             </button>
           </div>
         )}
+      </div>
 
-        {/* ── Above the fold: Field + Momentum + Latest Play ── */}
-        <div className="flex-shrink-0">
-          <FieldVisual
-            ballPosition={gameState.ballPosition}
-            firstDownLine={firstDownLine}
-            possession={gameState.possession}
-            homeTeam={{
-              abbreviation: gameState.homeTeam.abbreviation,
-              primaryColor: gameState.homeTeam.primaryColor,
-              secondaryColor: gameState.homeTeam.secondaryColor,
-            }}
-            awayTeam={{
-              abbreviation: gameState.awayTeam.abbreviation,
-              primaryColor: gameState.awayTeam.primaryColor,
-              secondaryColor: gameState.awayTeam.secondaryColor,
-            }}
-            down={gameState.down}
-            yardsToGo={gameState.yardsToGo}
-            quarter={gameState.quarter}
-            clock={gameState.clock}
-            lastPlay={currentEvent?.playResult ?? null}
-            isKickoff={gameState.kickoff}
-            isPatAttempt={gameState.patAttempt}
-            gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
-            driveStartPosition={driveStartPosition}
-            narrativeContext={currentEvent?.narrativeContext ?? null}
-          />
+      {/* ── Field + Momentum + Latest Play ── */}
+      <div className="flex-shrink-0">
+        <FieldVisual
+          ballPosition={gameState.ballPosition}
+          firstDownLine={firstDownLine}
+          possession={gameState.possession}
+          homeTeam={{
+            abbreviation: gameState.homeTeam.abbreviation,
+            primaryColor: gameState.homeTeam.primaryColor,
+            secondaryColor: gameState.homeTeam.secondaryColor,
+          }}
+          awayTeam={{
+            abbreviation: gameState.awayTeam.abbreviation,
+            primaryColor: gameState.awayTeam.primaryColor,
+            secondaryColor: gameState.awayTeam.secondaryColor,
+          }}
+          down={gameState.down}
+          yardsToGo={gameState.yardsToGo}
+          quarter={gameState.quarter}
+          clock={gameState.clock}
+          lastPlay={currentEvent?.playResult ?? null}
+          isKickoff={gameState.kickoff}
+          isPatAttempt={gameState.patAttempt}
+          gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
+          driveStartPosition={driveStartPosition}
+          narrativeContext={currentEvent?.narrativeContext ?? null}
+        />
 
-          <MomentumMeter
-            momentum={momentum}
-            homeColor={gameState.homeTeam.primaryColor}
-            awayColor={gameState.awayTeam.primaryColor}
-            homeAbbrev={gameState.homeTeam.abbreviation}
-            awayAbbrev={gameState.awayTeam.abbreviation}
-          />
+        <MomentumMeter
+          momentum={momentum}
+          homeColor={gameState.homeTeam.primaryColor}
+          awayColor={gameState.awayTeam.primaryColor}
+          homeAbbrev={gameState.homeTeam.abbreviation}
+          awayAbbrev={gameState.awayTeam.abbreviation}
+        />
 
-          {/* Latest play commentary — always visible on screen */}
-          <LatestPlayBanner event={currentEvent} isLive={isLive} />
-        </div>
+        {/* Latest play commentary — always visible on screen */}
+        <LatestPlayBanner event={currentEvent} isLive={isLive} />
+      </div>
 
-        {/* ── Below the fold: scrollable section ── */}
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          {/* Narrative context */}
-          {currentEvent?.narrativeContext && (
-            <NarrativeBar narrative={currentEvent.narrativeContext} />
-          )}
+      {/* ── Below the fold: naturally scrollable ── */}
+      <div className="flex-1">
+        {/* Narrative context */}
+        {currentEvent?.narrativeContext && (
+          <NarrativeBar narrative={currentEvent.narrativeContext} />
+        )}
 
-          {/* Collapsible box score */}
-          <BoxScoreDropdown
-            boxScore={activeBoxScore}
-            homeTeam={gameState.homeTeam}
-            awayTeam={gameState.awayTeam}
-          />
+        {/* Collapsible box score */}
+        <BoxScoreDropdown
+          boxScore={activeBoxScore}
+          homeTeam={gameState.homeTeam}
+          awayTeam={gameState.awayTeam}
+        />
 
-          {/* Full play history */}
-          <PlayFeed events={events} isLive={isLive} />
-        </div>
+        {/* Full play history */}
+        <PlayFeed events={events} isLive={isLive} />
       </div>
     </div>
   );
@@ -365,10 +362,10 @@ function BoxScoreDropdown({
       <div
         className="overflow-hidden transition-all duration-300 ease-in-out"
         style={{
-          maxHeight: open ? '50vh' : '0px',
+          maxHeight: open ? '600px' : '0px',
         }}
       >
-        <div className="overflow-y-auto border-t border-border/30" style={{ maxHeight: '50vh' }}>
+        <div className="border-t border-border/30">
           <BoxScore
             boxScore={boxScoreData}
             homeTeam={home}
