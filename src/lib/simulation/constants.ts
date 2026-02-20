@@ -520,31 +520,31 @@ export const PLAY_DELAY_HALFTIME = 15000;
 // ============================================================================
 
 /** Real-time delay when the clock is stopped (huddle + lineup time) */
-export const REALTIME_PLAY_CLOCK_DELAY_MS = 4_000;
+export const REALTIME_PLAY_CLOCK_DELAY_MS = 8_000;
 
 /** Faster play clock during two-minute drill / hurry-up */
-export const REALTIME_TWO_MINUTE_PLAY_CLOCK_MS = 2_500;
+export const REALTIME_TWO_MINUTE_PLAY_CLOCK_MS = 5_000;
 
 /** Pause between quarters (Q1→Q2, Q3→Q4) */
-export const REALTIME_QUARTER_BREAK_MS = 8_000;
+export const REALTIME_QUARTER_BREAK_MS = 15_000;
 
 /** Halftime break */
-export const REALTIME_HALFTIME_MS = 20_000;
+export const REALTIME_HALFTIME_MS = 45_000;
 
 /** Pause for the two-minute warning */
-export const REALTIME_TWO_MINUTE_WARNING_MS = 4_000;
+export const REALTIME_TWO_MINUTE_WARNING_MS = 8_000;
 
 /** Extra celebration pause after a touchdown */
-export const REALTIME_TOUCHDOWN_BONUS_MS = 3_000;
+export const REALTIME_TOUCHDOWN_BONUS_MS = 6_000;
 
 /** Dramatic pause after a turnover */
-export const REALTIME_TURNOVER_BONUS_MS = 2_000;
+export const REALTIME_TURNOVER_BONUS_MS = 4_000;
 
-/** Estimated total game duration including all delays (~18 min) */
-export const ESTIMATED_GAME_DURATION_MS = 18 * 60 * 1000;
+/** Estimated total game duration including all delays (~30 min) */
+export const ESTIMATED_GAME_DURATION_MS = 30 * 60 * 1000;
 
-/** Estimated game slot including post-game intermission (~25 min) */
-export const ESTIMATED_GAME_SLOT_MS = 25 * 60 * 1000;
+/** Estimated game slot including post-game intermission (~45 min) */
+export const ESTIMATED_GAME_SLOT_MS = 45 * 60 * 1000;
 
 // ============================================================================
 // SCORING DISTRIBUTION TARGETS (for validation / regression testing)

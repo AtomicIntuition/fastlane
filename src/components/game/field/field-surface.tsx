@@ -72,22 +72,24 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         {awayTeam.abbreviation}
       </text>
 
-      {/* Away team logos — top and bottom of end zone */}
+      {/* Away team logos — top and bottom of end zone (aspect-ratio preserved) */}
       <image
         href={getTeamLogoUrl(awayTeam.abbreviation)}
-        x="15"
+        x="10"
         y="10"
-        width="55"
-        height="55"
+        width="80"
+        height="80"
         opacity="0.5"
+        preserveAspectRatio="xMidYMid meet"
       />
       <image
         href={getTeamLogoUrl(awayTeam.abbreviation)}
-        x="15"
-        y="469"
-        width="55"
-        height="55"
+        x="10"
+        y="444"
+        width="80"
+        height="80"
         opacity="0.5"
+        preserveAspectRatio="xMidYMid meet"
       />
 
       {/* Home end zone (right) */}
@@ -110,32 +112,35 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         {homeTeam.abbreviation}
       </text>
 
-      {/* Home team logos — top and bottom of end zone */}
+      {/* Home team logos — top and bottom of end zone (aspect-ratio preserved) */}
       <image
         href={getTeamLogoUrl(homeTeam.abbreviation)}
-        x="1130"
+        x="1110"
         y="10"
-        width="55"
-        height="55"
+        width="80"
+        height="80"
         opacity="0.5"
+        preserveAspectRatio="xMidYMid meet"
       />
       <image
         href={getTeamLogoUrl(homeTeam.abbreviation)}
-        x="1130"
-        y="469"
-        width="55"
-        height="55"
+        x="1110"
+        y="444"
+        width="80"
+        height="80"
         opacity="0.5"
+        preserveAspectRatio="xMidYMid meet"
       />
 
       {/* Midfield home team logo (home stadium branding) */}
       <image
         href={getTeamLogoUrl(homeTeam.abbreviation)}
-        x="530"
-        y="197"
-        width="140"
-        height="140"
+        x="510"
+        y="177"
+        width="180"
+        height="180"
         opacity="0.12"
+        preserveAspectRatio="xMidYMid meet"
       />
 
       {/* Goal lines */}

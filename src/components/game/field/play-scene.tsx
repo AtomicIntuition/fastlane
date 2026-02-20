@@ -15,11 +15,11 @@ interface PlaySceneProps {
   playKey: number;
   onAnimating: (animating: boolean) => void;
   onPhaseChange?: (phase: Phase) => void;
-  /** Container width/height ratio, used to keep dots round */
+  /** @deprecated No longer needed — HTML/CSS rendering is distortion-free */
   aspectRatio?: number;
 }
 
-// ── Enhanced Timing ──────────────────────────────────────────
+// ── Timing ───────────────────────────────────────────────────
 const PRE_SNAP_MS = 500;
 const SNAP_MS = 150;
 const DEVELOPMENT_MS = 1800;
@@ -29,7 +29,7 @@ const TOTAL_MS = PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS + RESULT_MS + POST_PLAY_
 
 type Phase = 'idle' | 'pre_snap' | 'snap' | 'development' | 'result' | 'post_play';
 
-// ── Easing helpers ──────────────────────────────────────────
+// ── Easing ───────────────────────────────────────────────────
 function easeOutCubic(t: number): number {
   return 1 - Math.pow(1 - t, 3);
 }
@@ -38,7 +38,10 @@ function easeInOutQuad(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }
 
-// ── Main component ──────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ══════════════════════════════════════════════════════════════
+
 export function PlayScene({
   ballLeftPercent,
   prevBallLeftPercent,
@@ -49,7 +52,6 @@ export function PlayScene({
   playKey,
   onAnimating,
   onPhaseChange,
-  aspectRatio = 2.5,
 }: PlaySceneProps) {
   const [phase, setPhase] = useState<Phase>('idle');
   const prevKeyRef = useRef(playKey);
@@ -67,7 +69,7 @@ export function PlayScene({
     onPhaseChangeRef.current?.(newPhase);
   }, []);
 
-  // ── Formation dots ──────────────────────────────────────
+  // ── Formation dots ─────────────────────────────────────────
   const formation = useMemo(() => {
     const losX = fromToRef.current.from;
     const playType = lastPlay?.type ?? null;
@@ -79,7 +81,7 @@ export function PlayScene({
     );
   }, [possession, lastPlay, playKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Detect new play → start animation ───────────────────
+  // ── Detect new play → start animation ──────────────────────
   const onAnimatingRef = useRef(onAnimating);
   onAnimatingRef.current = onAnimating;
 
@@ -126,7 +128,7 @@ export function PlayScene({
     };
   }, [playKey, lastPlay, prevBallLeftPercent, ballLeftPercent, updatePhase]);
 
-  // ── RAF loop ─────────────────────────────────────────────
+  // ── RAF loop ───────────────────────────────────────────────
   function startRaf(fromX: number, toX: number, play: PlayResult) {
     const startTime = performance.now();
     function tick(now: number) {
@@ -138,7 +140,7 @@ export function PlayScene({
     animFrameRef.current = requestAnimationFrame(tick);
   }
 
-  // ── Render nothing when idle ─────────────────────────────
+  // ── Render nothing when idle ───────────────────────────────
   if (phase === 'idle' || !lastPlay) return null;
 
   const fromX = fromToRef.current.from;
@@ -153,9 +155,7 @@ export function PlayScene({
     phase === 'development' ? 1 :
     phase === 'result' ? 0.9 : 0;
 
-  // Aspect ratio correction: SVG viewBox is 100x100 but container is wider
-  // To make circles round, shrink rx relative to ry
-  const ar = 1 / aspectRatio; // e.g., 0.4 for a 2.5:1 container
+  const isRunPlay = playType === 'run' || playType === 'scramble' || playType === 'two_point';
 
   const isPassPlay = playType === 'pass_complete' || playType === 'pass_incomplete' ||
     lastPlay.call?.startsWith('pass_') || lastPlay.call?.startsWith('play_action') ||
@@ -169,82 +169,26 @@ export function PlayScene({
         transition: phase === 'post_play' ? 'opacity 400ms ease-out' : 'opacity 200ms ease-in',
       }}
     >
-      <svg
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-        className="w-full h-full"
-      >
-        {/* ─── Route lines for pass plays (behind dots) ─── */}
-        {isPassPlay && (phase === 'development' || phase === 'result') && (
-          <RouteLines
-            formation={formation}
-            fromX={fromX}
-            offDir={offDir}
-            offenseColor={offenseColor}
-            playCall={lastPlay.call}
-            progress={animProgress}
-            ar={ar}
-          />
-        )}
+      {/* ─── SVG layer for trajectory lines (lines don't distort) ─── */}
+      {(phase === 'development' || phase === 'result') && (
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full"
+        >
+          {/* Route lines for pass plays */}
+          {isPassPlay && (
+            <RouteLines
+              formation={formation}
+              fromX={fromX}
+              offDir={offDir}
+              offenseColor={offenseColor}
+              playCall={lastPlay.call}
+              progress={animProgress}
+            />
+          )}
 
-        {/* ─── Player formation dots (aspect-ratio corrected ellipses) ─── */}
-        {formation.map((dot, i) => {
-          const dotX = clamp(dot.x, 1, 99);
-          const dotY = clamp(dot.y, 3, 97);
-          const isQB = dot.role === 'QB';
-          const isOffense = dot.team === 'offense';
-          const baseR = isQB ? 1.8 : 1.4;
-
-          // Animate during play phases
-          let animX = dotX;
-          let animY = dotY;
-          if ((phase === 'snap' || phase === 'development') && isOffense) {
-            if (dot.role === 'OL') {
-              animX = dotX - offDir * 1.0;
-            } else if (isQB && !lastPlay.call?.startsWith('run_') && phase === 'development') {
-              animX = dotX + offDir * 2 * Math.min(animProgress * 2, 1);
-            }
-          }
-          if (phase === 'development' && !isOffense) {
-            const convergeFactor = Math.min(animProgress * 0.3, 0.15);
-            animX = dotX + (ballPos.x - dotX) * convergeFactor;
-            animY = dotY + (ballPos.y - dotY) * convergeFactor * 0.5;
-          }
-
-          return (
-            <g key={i}>
-              <ellipse
-                cx={animX}
-                cy={animY}
-                rx={baseR * ar}
-                ry={baseR}
-                fill={isOffense ? offenseColor : defenseColor}
-                opacity={isOffense ? 0.85 : 0.5}
-                stroke={isOffense ? 'white' : 'rgba(255,255,255,0.25)'}
-                strokeWidth={isOffense ? '0.3' : '0.2'}
-                className="play-scene-dot"
-              />
-              {/* Position label */}
-              <text
-                x={animX}
-                y={animY - baseR - 0.5}
-                textAnchor="middle"
-                fill="white"
-                fontSize={1.8 * ar < 1.2 ? '1.2' : `${1.8 * ar}`}
-                fontWeight="bold"
-                fontFamily="system-ui"
-                opacity={dot.isKeyPlayer ? 0.85 : 0.55}
-                transform={`scale(${1/ar}, 1)`}
-                transform-origin={`${animX} ${animY - baseR - 0.5}`}
-              >
-                {dot.isKeyPlayer && dot.number ? `#${dot.number}` : dot.role}
-              </text>
-            </g>
-          );
-        })}
-
-        {/* ─── Play trajectory trail ─── */}
-        {(phase === 'development' || phase === 'result') && (
+          {/* Play trajectory trail */}
           <PlayTrajectory
             playType={playType}
             fromX={fromX}
@@ -253,75 +197,178 @@ export function PlayScene({
             progress={animProgress}
             success={isSuccess}
           />
-        )}
+        </svg>
+      )}
 
-        {/* ─── Animated ball ─── */}
-        {phase === 'development' && (
-          <g>
-            <ellipse
-              cx={clamp(ballPos.x, 2, 98)}
-              cy={clamp(ballPos.y, 5, 95)}
-              rx={2.2 * ar}
-              ry="1.5"
-              fill="rgba(212, 175, 55, 0.35)"
-            />
-            <ellipse
-              cx={clamp(ballPos.x, 2, 98)}
-              cy={clamp(ballPos.y, 5, 95)}
-              rx={1.4 * ar}
-              ry="0.9"
-              fill="#8B4513"
-              stroke="#5C2D06"
-              strokeWidth="0.2"
-            />
-            <line
-              x1={clamp(ballPos.x, 2, 98) - 0.6 * ar}
-              y1={clamp(ballPos.y, 5, 95)}
-              x2={clamp(ballPos.x, 2, 98) + 0.6 * ar}
-              y2={clamp(ballPos.y, 5, 95)}
-              stroke="white"
-              strokeWidth="0.2"
-              opacity="0.7"
-            />
-          </g>
-        )}
+      {/* ─── HTML layer: player dots (perfectly round, no distortion) ─── */}
+      {formation.map((dot, i) => {
+        const isQB = dot.role === 'QB';
+        const isOffense = dot.team === 'offense';
 
-        {/* ─── Ball carrier dot ─── */}
-        {phase === 'development' &&
-          (playType === 'run' || playType === 'scramble' || playType === 'two_point') && (
-          <ellipse
-            cx={clamp(ballPos.x, 2, 98)}
-            cy={clamp(ballPos.y, 5, 95)}
-            rx={1.6 * ar}
-            ry="1.6"
-            fill={offenseColor}
-            stroke="white"
-            strokeWidth="0.4"
-            opacity="0.9"
+        let x = clamp(dot.x, 1, 99);
+        let y = clamp(dot.y, 3, 97);
+
+        // Animate during play phases
+        if ((phase === 'snap' || phase === 'development') && isOffense) {
+          if (dot.role === 'OL') {
+            x -= offDir * 1.0;
+          } else if (isQB && !lastPlay.call?.startsWith('run_') && phase === 'development') {
+            x += offDir * 2 * Math.min(animProgress * 2, 1);
+          }
+        }
+        if (phase === 'development' && !isOffense) {
+          const convergeFactor = Math.min(animProgress * 0.3, 0.15);
+          x += (ballPos.x - x) * convergeFactor;
+          y += (ballPos.y - y) * convergeFactor * 0.5;
+        }
+
+        const dotSize = isQB ? 12 : 9;
+
+        return (
+          <div
+            key={i}
+            className="absolute play-scene-dot"
+            style={{
+              left: `${x}%`,
+              top: `${y}%`,
+              transform: 'translate(-50%, -50%)',
+              zIndex: isOffense ? 3 : 1,
+            }}
+          >
+            {/* Player dot — perfectly round */}
+            <div
+              className="rounded-full"
+              style={{
+                width: dotSize,
+                height: dotSize,
+                backgroundColor: isOffense ? offenseColor : defenseColor,
+                opacity: isOffense ? 0.9 : 0.45,
+                border: isOffense
+                  ? '1.5px solid rgba(255,255,255,0.8)'
+                  : '1px solid rgba(255,255,255,0.2)',
+                boxShadow: isOffense
+                  ? '0 0 4px rgba(0,0,0,0.4)'
+                  : 'none',
+              }}
+            />
+            {/* Position label */}
+            {(isOffense || dot.isKeyPlayer) && (
+              <div
+                className="absolute left-1/2 whitespace-nowrap font-bold"
+                style={{
+                  transform: 'translateX(-50%)',
+                  bottom: `${dotSize / 2 + 3}px`,
+                  fontSize: '8px',
+                  lineHeight: 1,
+                  color: 'white',
+                  opacity: dot.isKeyPlayer ? 0.9 : 0.5,
+                  textShadow: '0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.6)',
+                  letterSpacing: '0.03em',
+                }}
+              >
+                {dot.isKeyPlayer && dot.number ? `#${dot.number}` : dot.role}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* ─── Ball carrier dot (runs/scrambles) ─── */}
+      {phase === 'development' && isRunPlay && (
+        <div
+          className="absolute"
+          style={{
+            left: `${clamp(ballPos.x, 2, 98)}%`,
+            top: `${clamp(ballPos.y, 5, 95)}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 5,
+          }}
+        >
+          <div
+            className="rounded-full"
+            style={{
+              width: 13,
+              height: 13,
+              backgroundColor: offenseColor,
+              border: '2px solid white',
+              opacity: 0.9,
+              boxShadow: '0 0 8px rgba(255,255,255,0.3), 0 0 4px rgba(0,0,0,0.5)',
+            }}
           />
-        )}
+        </div>
+      )}
 
-        {/* ─── Outcome markers ─── */}
-        {(phase === 'result' || phase === 'post_play') && (
-          <OutcomeMarker
-            lastPlay={lastPlay}
-            fromX={fromX}
-            toX={toX}
-            possession={possession}
-            ar={ar}
+      {/* ─── Animated ball (passes, kicks) ─── */}
+      {phase === 'development' && !isRunPlay && (
+        <div
+          className="absolute"
+          style={{
+            left: `${clamp(ballPos.x, 2, 98)}%`,
+            top: `${clamp(ballPos.y, 5, 95)}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 6,
+          }}
+        >
+          {/* Glow beneath */}
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: 18,
+              height: 14,
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: 'rgba(212, 175, 55, 0.3)',
+              filter: 'blur(4px)',
+            }}
           />
-        )}
-      </svg>
+          {/* Ball shape */}
+          <div
+            style={{
+              width: 12,
+              height: 8,
+              borderRadius: '50%',
+              background: 'linear-gradient(135deg, #A0522D 0%, #8B4513 50%, #6B3410 100%)',
+              border: '1px solid #5C2D06',
+              boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
+              position: 'relative',
+            }}
+          >
+            {/* Lace */}
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                left: '20%',
+                right: '20%',
+                height: 1,
+                background: 'rgba(255,255,255,0.6)',
+                transform: 'translateY(-50%)',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ─── Outcome markers ─── */}
+      {(phase === 'result' || phase === 'post_play') && (
+        <OutcomeMarker
+          lastPlay={lastPlay}
+          fromX={fromX}
+          toX={toX}
+          possession={possession}
+        />
+      )}
     </div>
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// ROUTE LINES
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// ROUTE LINES (SVG — lines don't distort meaningfully)
+// ══════════════════════════════════════════════════════════════
 
 function RouteLines({
-  formation, fromX, offDir, offenseColor, playCall, progress, ar,
+  formation, fromX, offDir, offenseColor, playCall, progress,
 }: {
   formation: PlayerDot[];
   fromX: number;
@@ -329,7 +376,6 @@ function RouteLines({
   offenseColor: string;
   playCall: string;
   progress: number;
-  ar: number;
 }) {
   const receivers = formation.filter(
     d => d.team === 'offense' && (d.role === 'WR' || d.role === 'TE')
@@ -368,9 +414,153 @@ function RouteLines({
   );
 }
 
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// OUTCOME MARKERS (HTML — clean, undistorted text)
+// ══════════════════════════════════════════════════════════════
+
+function OutcomeMarker({
+  lastPlay, fromX, toX, possession,
+}: {
+  lastPlay: PlayResult; fromX: number; toX: number;
+  possession: 'home' | 'away';
+}) {
+  const offDir = possession === 'away' ? -1 : 1;
+
+  let text = '';
+  let color = '';
+  let x = toX;
+  let size: 'lg' | 'md' | 'sm' = 'md';
+  let icon: 'x' | 'burst' | 'circle' | null = null;
+
+  if (lastPlay.isTouchdown) {
+    text = 'TOUCHDOWN!';
+    color = '#22c55e';
+    size = 'lg';
+  } else if (lastPlay.type === 'pass_incomplete') {
+    text = 'INCOMPLETE';
+    color = '#ef4444';
+    x = fromX - offDir * 10;
+    icon = 'x';
+  } else if (lastPlay.type === 'sack') {
+    text = 'SACK';
+    color = '#ef4444';
+    icon = 'burst';
+  } else if (lastPlay.turnover) {
+    text = lastPlay.turnover.type === 'interception' ? 'INTERCEPTION!'
+      : lastPlay.turnover.type === 'fumble' ? 'FUMBLE!' : 'TURNOVER!';
+    color = '#f59e0b';
+    size = 'lg';
+  } else if (lastPlay.isSafety) {
+    text = 'SAFETY!';
+    color = '#ef4444';
+    size = 'lg';
+  } else if (lastPlay.type === 'field_goal' || lastPlay.type === 'extra_point') {
+    const goalPostX = possession === 'away' ? 91.66 : 8.33;
+    text = lastPlay.scoring ? 'GOOD!' : 'NO GOOD';
+    color = lastPlay.scoring ? '#22c55e' : '#ef4444';
+    x = goalPostX;
+    icon = 'circle';
+  } else if ((lastPlay.type === 'run' || lastPlay.type === 'scramble') && lastPlay.yardsGained > 15) {
+    text = `+${lastPlay.yardsGained} YDS`;
+    color = '#22c55e';
+    size = 'sm';
+  } else if (lastPlay.type === 'pass_complete' && lastPlay.yardsGained > 20) {
+    text = `+${lastPlay.yardsGained} YDS`;
+    color = '#3b82f6';
+    size = 'sm';
+  }
+
+  if (!text) return null;
+
+  const fontSize = size === 'lg' ? 18 : size === 'md' ? 14 : 12;
+
+  return (
+    <div
+      className="outcome-marker-anim absolute"
+      style={{
+        left: `${clamp(x, 5, 95)}%`,
+        top: '33%',
+        transform: 'translate(-50%, -50%)',
+        zIndex: 20,
+        textAlign: 'center',
+      }}
+    >
+      {/* Icon: X mark */}
+      {icon === 'x' && (
+        <div className="relative mx-auto mb-1" style={{ width: 16, height: 16 }}>
+          <div
+            className="absolute rounded-full"
+            style={{
+              top: '50%', left: '50%',
+              width: 14, height: 2,
+              background: color,
+              transform: 'translate(-50%, -50%) rotate(45deg)',
+              borderRadius: 1,
+            }}
+          />
+          <div
+            className="absolute rounded-full"
+            style={{
+              top: '50%', left: '50%',
+              width: 14, height: 2,
+              background: color,
+              transform: 'translate(-50%, -50%) rotate(-45deg)',
+              borderRadius: 1,
+            }}
+          />
+        </div>
+      )}
+
+      {/* Icon: Burst (sack) */}
+      {icon === 'burst' && (
+        <div className="relative mx-auto mb-1" style={{ width: 20, height: 20 }}>
+          {Array.from({ length: 8 }, (_, i) => (
+            <div
+              key={i}
+              className="absolute"
+              style={{
+                top: '50%', left: '50%',
+                width: 2, height: 10,
+                background: color,
+                borderRadius: 1,
+                transform: `translate(-50%, -50%) rotate(${i * 45}deg)`,
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Icon: Circle glow (field goal) */}
+      {icon === 'circle' && (
+        <div
+          className="mx-auto mb-1 rounded-full"
+          style={{
+            width: 20, height: 20,
+            backgroundColor: color,
+            opacity: 0.3,
+          }}
+        />
+      )}
+
+      {/* Text label */}
+      <div
+        className="font-black tracking-wider whitespace-nowrap"
+        style={{
+          color,
+          fontSize,
+          textShadow: `0 2px 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.5), 0 0 20px ${color}40`,
+          letterSpacing: '0.08em',
+        }}
+      >
+        {text}
+      </div>
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
 // FORMATION GENERATION
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
 
 interface PlayerDot {
   x: number;
@@ -413,7 +603,6 @@ function convertLayout(
   layout: FormationPosition[], losX: number, offDir: number,
   team: 'offense' | 'defense', lastPlay: PlayResult | null,
 ): PlayerDot[] {
-  // Track which key player roles we've already assigned
   let receiverMarked = false;
   let defenderMarked = false;
 
@@ -528,9 +717,9 @@ function getFieldGoalFormation(losX: number, offDir: number): PlayerDot[] {
   ];
 }
 
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
 // BALL TRAJECTORY
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
 
 function calculateBallPosition(
   play: PlayResult, fromX: number, toX: number, t: number,
@@ -617,9 +806,9 @@ function calculateBallPosition(
   }
 }
 
-// ════════════════════════════════════════════════════════════
-// PLAY TRAJECTORY TRAIL
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// PLAY TRAJECTORY TRAIL (SVG)
+// ══════════════════════════════════════════════════════════════
 
 function PlayTrajectory({
   playType, fromX, toX, possession, progress, success,
@@ -697,141 +886,9 @@ function PlayTrajectory({
   }
 }
 
-// ════════════════════════════════════════════════════════════
-// OUTCOME MARKERS
-// ════════════════════════════════════════════════════════════
-
-function OutcomeMarker({
-  lastPlay, fromX, toX, possession, ar,
-}: {
-  lastPlay: PlayResult; fromX: number; toX: number;
-  possession: 'home' | 'away'; ar: number;
-}) {
-  const offDir = possession === 'away' ? -1 : 1;
-
-  // Scale text so it doesn't get stretched horizontally
-  const textScale = `scale(${1/ar}, 1)`;
-
-  if (lastPlay.type === 'pass_incomplete') {
-    const dropX = fromX - offDir * 10;
-    return (
-      <g className="outcome-marker-anim">
-        <line x1={dropX - 2 * ar} y1={47} x2={dropX + 2 * ar} y2={53}
-          stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
-        <line x1={dropX + 2 * ar} y1={47} x2={dropX - 2 * ar} y2={53}
-          stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round" />
-        <text x={dropX} y={40} textAnchor="middle" fill="#ef4444"
-          fontSize="3.5" fontWeight="bold" fontFamily="system-ui"
-          transform={textScale} transform-origin={`${dropX} 40`}>
-          INCOMPLETE
-        </text>
-      </g>
-    );
-  }
-
-  if (lastPlay.type === 'field_goal' || lastPlay.type === 'extra_point') {
-    const goalPostX = possession === 'away' ? 91.66 : 8.33;
-    const color = lastPlay.scoring ? '#22c55e' : '#ef4444';
-    const label = lastPlay.scoring ? 'GOOD!' : 'NO GOOD';
-    return (
-      <g className="outcome-marker-anim">
-        <ellipse cx={goalPostX} cy={50} rx={3 * ar} ry={3} fill={color} opacity="0.3" />
-        <text x={goalPostX} y={18} textAnchor="middle" fill={color}
-          fontSize="4" fontWeight="bold" fontFamily="system-ui"
-          transform={textScale} transform-origin={`${goalPostX} 18`}>
-          {label}
-        </text>
-      </g>
-    );
-  }
-
-  if (lastPlay.type === 'sack') {
-    return (
-      <g className="outcome-marker-anim">
-        {Array.from({ length: 8 }, (_, i) => {
-          const angle = (i * 45 * Math.PI) / 180;
-          return (
-            <line key={i}
-              x1={toX + Math.cos(angle) * 1.5 * ar} y1={50 + Math.sin(angle) * 1.5}
-              x2={toX + Math.cos(angle) * 4 * ar} y2={50 + Math.sin(angle) * 4}
-              stroke="#ef4444" strokeWidth="1" strokeLinecap="round" opacity="0.7" />
-          );
-        })}
-        <text x={toX} y={40} textAnchor="middle" fill="#ef4444"
-          fontSize="3.5" fontWeight="bold" fontFamily="system-ui"
-          transform={textScale} transform-origin={`${toX} 40`}>
-          SACK
-        </text>
-      </g>
-    );
-  }
-
-  // Big play markers
-  if (lastPlay.isTouchdown) {
-    return (
-      <g className="outcome-marker-anim">
-        <text x={toX} y={38} textAnchor="middle" fill="#22c55e"
-          fontSize="5" fontWeight="bold" fontFamily="system-ui"
-          transform={textScale} transform-origin={`${toX} 38`}>
-          TOUCHDOWN!
-        </text>
-      </g>
-    );
-  }
-  if (lastPlay.turnover) {
-    const label = lastPlay.turnover.type === 'interception' ? 'INTERCEPTION!'
-      : lastPlay.turnover.type === 'fumble' ? 'FUMBLE!' : 'TURNOVER!';
-    return (
-      <g className="outcome-marker-anim">
-        <text x={toX} y={38} textAnchor="middle" fill="#f59e0b"
-          fontSize="4" fontWeight="bold" fontFamily="system-ui"
-          transform={textScale} transform-origin={`${toX} 38`}>
-          {label}
-        </text>
-      </g>
-    );
-  }
-  if (lastPlay.isSafety) {
-    return (
-      <g className="outcome-marker-anim">
-        <text x={toX} y={38} textAnchor="middle" fill="#ef4444"
-          fontSize="4" fontWeight="bold" fontFamily="system-ui"
-          transform={textScale} transform-origin={`${toX} 38`}>
-          SAFETY!
-        </text>
-      </g>
-    );
-  }
-
-  if ((lastPlay.type === 'run' || lastPlay.type === 'scramble') && lastPlay.yardsGained > 15) {
-    return (
-      <g className="outcome-marker-anim">
-        <text x={toX} y={40} textAnchor="middle" fill="#22c55e"
-          fontSize="3.5" fontWeight="bold" fontFamily="system-ui" opacity="0.8"
-          transform={textScale} transform-origin={`${toX} 40`}>
-          +{lastPlay.yardsGained} YDS
-        </text>
-      </g>
-    );
-  }
-  if (lastPlay.type === 'pass_complete' && lastPlay.yardsGained > 20) {
-    return (
-      <g className="outcome-marker-anim">
-        <text x={toX} y={40} textAnchor="middle" fill="#3b82f6"
-          fontSize="3.5" fontWeight="bold" fontFamily="system-ui" opacity="0.8"
-          transform={textScale} transform-origin={`${toX} 40`}>
-          +{lastPlay.yardsGained} YDS
-        </text>
-      </g>
-    );
-  }
-
-  return null;
-}
-
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
 // HELPERS
-// ════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
 
 function isFailedPlay(play: PlayResult): boolean {
   if (play.type === 'pass_incomplete') return true;

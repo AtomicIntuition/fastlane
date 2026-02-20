@@ -233,8 +233,8 @@ function calculatePlayDelay(
   let delay: number;
 
   if (clockUpdate?.isClockRunning && play.clockElapsed && play.clockElapsed > 0) {
-    // Clock is running: compress game clock to ~18% for fast-paced 15-20 min games
-    delay = play.clockElapsed * 180;
+    // Clock is running: compress game clock for ~30 min broadcast experience
+    delay = play.clockElapsed * 400;
   } else if (drama.isTwoMinuteDrill) {
     // Hurry-up / two-minute drill: faster play clock
     delay = REALTIME_TWO_MINUTE_PLAY_CLOCK_MS;
