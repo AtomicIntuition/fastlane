@@ -121,21 +121,7 @@ export function BoxScore({ boxScore, homeTeam, awayTeam }: BoxScoreProps) {
         </span>
       </button>
 
-      {/* Always show a condensed preview */}
-      {!isExpanded && (
-        <div className="space-y-1.5 pb-3">
-          {stats.slice(0, 4).map((stat) => (
-            <CompactStatRow
-              key={stat.label}
-              stat={stat}
-              homeColor={homeTeam.primaryColor}
-              awayColor={awayTeam.primaryColor}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* Expanded view */}
+      {/* Expanded view — fully collapsed by default so commentary is visible on mobile */}
       {isExpanded && (
         <div className="space-y-1.5 pb-3">
           {/* Team header */}
