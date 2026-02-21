@@ -1043,25 +1043,14 @@ function GameOverWithRedirect({
   mvp: import('@/lib/simulation/types').PlayerGameStats | null;
 }) {
   const router = useRouter();
-  const [countdown, setCountdown] = useState(8);
-  const [cancelled, setCancelled] = useState(false);
 
+  // Silent auto-redirect to homepage after 30 seconds
   useEffect(() => {
-    if (cancelled) return;
-
-    const timer = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          router.push('/');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [cancelled, router]);
+    const timer = setTimeout(() => {
+      router.push('/');
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, [router]);
 
   return (
     <div className="min-h-dvh">
@@ -1074,23 +1063,6 @@ function GameOverWithRedirect({
         mvp={gameOverMvp}
         nextGameCountdown={0}
       />
-
-      {/* Auto-redirect countdown */}
-      {!cancelled && countdown > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50">
-          <div className="flex items-center gap-3 px-4 py-2 rounded-full bg-surface/90 border border-border/50 backdrop-blur-sm shadow-lg">
-            <span className="text-xs text-text-secondary">
-              Returning home in <span className="font-mono font-bold text-text-primary tabular-nums">{countdown}s</span>
-            </span>
-            <button
-              onClick={() => setCancelled(true)}
-              className="text-[10px] font-bold text-gold hover:text-gold-bright transition-colors uppercase tracking-wider"
-            >
-              Stay
-            </button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

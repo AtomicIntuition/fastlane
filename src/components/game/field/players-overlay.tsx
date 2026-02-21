@@ -174,6 +174,8 @@ export function PlayersOverlay({
   const [ballCarrierIdx, setBallCarrierIdx] = useState(-1);
   // Track whether carrier has transferred (for RAF updates)
   const carrierTransferredRef = useRef(false);
+  // Route trail lines for WR routes during pass plays
+  const [routeLines, setRouteLines] = useState<{ points: string }[]>([]);
 
   const offDir = possession === 'away' ? -1 : 1;
   const losX = prevBallLeftPercent; // LOS at play start
@@ -294,6 +296,7 @@ export function PlayersOverlay({
       const defIdle = getIdlePositions(ballLeftPercent, offDir, 'defense');
       offDotsRef.current = offIdle;
       defDotsRef.current = defIdle;
+      setRouteLines([]);
       updateDom();
       return;
     }
@@ -309,15 +312,30 @@ export function PlayersOverlay({
     }
 
     if (phase === 'snap') {
-      // Quick movement: OL fires forward, QB starts action
+      // Snap: OL fires forward, center snaps ball backward to QB
       if (offSnapRef.current.length > 0) {
-        const snapped = offSnapRef.current.map((p, i) => {
-          if (p.role === 'C' || p.role === 'LG' || p.role === 'RG' || p.role === 'LT' || p.role === 'RT') {
-            return { ...p, x: p.x - offDir * 1 };
+        const snapped = offSnapRef.current.map((p) => {
+          if (p.role === 'C') {
+            // Center snaps — quick push forward
+            return { ...p, x: p.x - offDir * 2.5 };
+          }
+          if (p.role === 'LG' || p.role === 'RG' || p.role === 'LT' || p.role === 'RT') {
+            // Guards/tackles fire into their stance
+            return { ...p, x: p.x - offDir * 1.5 };
           }
           return p;
         });
         offDotsRef.current = snapped;
+
+        // Also shift DL to react to the snap
+        const defSnapped = defSnapRef.current.map((p) => {
+          if (p.role === 'DE' || p.role === 'DT' || p.role === 'NT') {
+            return { ...p, x: p.x + offDir * 0.8 };
+          }
+          return p;
+        });
+        defDotsRef.current = defSnapped;
+
         updateDom();
       }
       return;
@@ -357,6 +375,37 @@ export function PlayersOverlay({
     const defStart = defSnapRef.current.map(p => ({ ...p }));
     const toX = ballLeftPercent;
     const fromX = prevBallLeftPercent;
+
+    // Compute route lines for pass plays (one-time, not per-frame)
+    const isPassPlay = playType === 'pass_complete' || playType === 'pass_incomplete' || playType === 'sack';
+    if (isPassPlay) {
+      const wrRoutes: { points: string }[] = [];
+      let wrCount = 0;
+      offStart.forEach((p) => {
+        if (p.role === 'WR' || p.role === 'TE') {
+          const isPrimary = wrCount === 0;
+          const route = isPrimary
+            ? getRouteForConcept(lastPlay!.routeConcept, lastPlay!.call)
+            : COMPLEMENT_ROUTES[wrCount % COMPLEMENT_ROUTES.length];
+          const routeScale = isPrimary ? 18 : 12;
+          const lateralScale = isPrimary ? 10 : 6;
+
+          const pts: string[] = [];
+          for (let step = 0; step <= 20; step++) {
+            const st = step / 20;
+            const routePt = interpolateRoute(route, st);
+            const rx = clamp(p.x - offDir * routeScale * routePt.dx, 2, 98);
+            const ry = clamp(p.y + routePt.dy * lateralScale, 5, 95);
+            pts.push(`${rx},${ry}`);
+          }
+          wrRoutes.push({ points: pts.join(' ') });
+          wrCount++;
+        }
+      });
+      setRouteLines(wrRoutes);
+    } else {
+      setRouteLines([]);
+    }
 
     function tick(now: number) {
       const t = Math.min((now - startTime) / DEVELOPMENT_MS, 1);
@@ -744,9 +793,10 @@ export function PlayersOverlay({
   // Don't render during pregame or when no game data
   if (gameStatus === 'pregame' || gameStatus === 'game_over') return null;
 
-  // Use CSS transitions for non-RAF phases — longer for huddle→formation break
+  // Use CSS transitions for non-RAF phases
+  // Pre-snap: 600ms transition → formation holds for ~900ms before snap
   const useTransition = phase === 'pre_snap' || phase === 'snap' || phase === 'post_play' || phase === 'idle';
-  const transMs = phase === 'pre_snap' ? 700 : 400;
+  const transMs = phase === 'pre_snap' ? 600 : phase === 'snap' ? 300 : 400;
   const transitionStyle = useTransition ? `left ${transMs}ms ease-out, top ${transMs}ms ease-out` : 'none';
 
   const logoUrl = teamAbbreviation ? getTeamLogoUrl(teamAbbreviation) : null;
@@ -827,6 +877,28 @@ export function PlayersOverlay({
           </div>
         );
       })}
+
+      {/* Route lines during pass plays */}
+      {routeLines.length > 0 && (phase === 'development' || phase === 'result') && (
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 w-full h-full pointer-events-none"
+          style={{ zIndex: 1 }}
+        >
+          {routeLines.map((line, i) => (
+            <polyline
+              key={`route-${i}`}
+              points={line.points}
+              fill="none"
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth="0.35"
+              strokeDasharray="1.2 0.8"
+              strokeLinecap="round"
+            />
+          ))}
+        </svg>
+      )}
 
       {/* Defense dots (11) — DL get square markers, DBs triangular-ish */}
       {Array.from({ length: 11 }, (_, i) => {

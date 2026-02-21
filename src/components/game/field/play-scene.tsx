@@ -17,8 +17,8 @@ interface PlaySceneProps {
 
 // ── Timing (exported for PlayersOverlay) ─────────────────────
 export const PRE_SNAP_MS = 1500;
-export const SNAP_MS = 200;
-export const DEVELOPMENT_MS = 2000;
+export const SNAP_MS = 400;
+export const DEVELOPMENT_MS = 2200;
 export const RESULT_MS = 600;
 export const POST_PLAY_MS = 500;
 const TOTAL_MS = PRE_SNAP_MS + SNAP_MS + DEVELOPMENT_MS + RESULT_MS + POST_PLAY_MS;
@@ -860,9 +860,9 @@ function calculateKickoffPosition(
   const landingX = fromX + (receiverEndZone - fromX) * 0.85;
 
   if (isTouchback) {
-    // Single phase: arc into end zone, ball stops
+    // Ball arcs fully into the end zone
     const eased = easeInOutQuad(t);
-    const x = fromX + (receiverEndZone - fromX) * 0.9 * eased;
+    const x = fromX + (receiverEndZone - fromX) * eased;
     const arcHeight = 42;
     return { x, y: 50 - arcHeight * Math.sin(t * Math.PI) };
   }
@@ -902,8 +902,19 @@ function calculatePuntPosition(
   const isFairCatch = desc.includes('fair catch');
   const isTouchback = play.yardsGained === 0 || desc.includes('touchback');
 
-  if (isFairCatch || isTouchback) {
-    // Single phase: arc to destination
+  if (isTouchback) {
+    // Ball arcs INTO the endzone (not to the 20-yard touchback spot)
+    // Determine which endzone the punt is heading toward
+    const puntDir = toX < fromX ? -1 : 1;
+    const endZoneX = puntDir < 0 ? 8.33 : 91.66;
+    const eased = easeInOutQuad(t);
+    const dist = Math.abs(endZoneX - fromX);
+    const arcHeight = Math.min(dist * 0.8, 38);
+    return { x: fromX + (endZoneX - fromX) * eased, y: 50 - arcHeight * Math.sin(t * Math.PI) };
+  }
+
+  if (isFairCatch) {
+    // Fair catch: arc to the catch spot (toX)
     const eased = easeInOutQuad(t);
     const dist = Math.abs(toX - fromX);
     const arcHeight = Math.min(dist * 0.9, 38);
