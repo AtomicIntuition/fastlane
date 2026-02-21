@@ -49,8 +49,42 @@ function easeOutQuad(t: number): number {
 
 type RoutePoint = { dx: number; dy: number };
 
+// ── Concept-specific route shapes (Arians playbook) ──────────
+const CONCEPT_ROUTES: Record<string, RoutePoint[]> = {
+  // Short concepts
+  hitch:  [{ dx: 0, dy: 0 }, { dx: 0.6, dy: 0.05 }, { dx: 0.85, dy: 0.03 }, { dx: 1, dy: -0.05 }],       // Comeback at 8yds
+  curl:   [{ dx: 0, dy: 0 }, { dx: 0.55, dy: 0 }, { dx: 0.9, dy: -0.1 }, { dx: 1, dy: -0.15 }],           // Deep comeback, settle
+  shake:  [{ dx: 0, dy: 0 }, { dx: 0.3, dy: 0.3 }, { dx: 0.5, dy: 0.15 }, { dx: 1, dy: -0.4 }],           // Inside-outside break
+  angle:  [{ dx: 0, dy: 0 }, { dx: 0.2, dy: -0.3 }, { dx: 0.45, dy: -0.2 }, { dx: 1, dy: 0.4 }],          // Flat then angle upfield
+  stick:  [{ dx: 0, dy: 0 }, { dx: 0.5, dy: 0.1 }, { dx: 0.6, dy: 0.1 }, { dx: 1, dy: 0.1 }],             // Straight then sit in zone
+
+  // Medium concepts
+  semi:   [{ dx: 0, dy: 0 }, { dx: 0.4, dy: 0.1 }, { dx: 0.6, dy: 0.3 }, { dx: 1, dy: 0.5 }],             // Skinny post
+  bench:  [{ dx: 0, dy: 0 }, { dx: 0.5, dy: 0 }, { dx: 0.65, dy: 0.15 }, { dx: 1, dy: 0.8 }],             // Out to sideline
+  drive:  [{ dx: 0, dy: 0 }, { dx: 0.5, dy: -0.15 }, { dx: 0.7, dy: 0 }, { dx: 1, dy: 0.6 }],             // Deep cross
+  cross:  [{ dx: 0, dy: 0 }, { dx: 0.4, dy: 0 }, { dx: 0.6, dy: 0.2 }, { dx: 1, dy: 0.7 }],               // Shallow cross
+  blinky: [{ dx: 0, dy: 0 }, { dx: 0.35, dy: 0.1 }, { dx: 0.55, dy: -0.1 }, { dx: 1, dy: 0.4 }],          // Hesitation move
+
+  // Deep concepts
+  go:     [{ dx: 0, dy: 0 }, { dx: 0.3, dy: 0.05 }, { dx: 0.7, dy: 0.08 }, { dx: 1, dy: 0.1 }],           // Straight vertical
+  cab:    [{ dx: 0, dy: 0 }, { dx: 0.4, dy: 0 }, { dx: 0.6, dy: 0.1 }, { dx: 1, dy: 0.45 }],              // Corner-and-back
+  pylon:  [{ dx: 0, dy: 0 }, { dx: 0.45, dy: -0.1 }, { dx: 0.7, dy: 0.2 }, { dx: 1, dy: 0.75 }],          // Corner/flag to pylon
+  x_ray:  [{ dx: 0, dy: 0 }, { dx: 0.35, dy: 0.3 }, { dx: 0.55, dy: 0.15 }, { dx: 1, dy: 0.5 }],          // Post double-move
+  delta:  [{ dx: 0, dy: 0 }, { dx: 0.4, dy: 0.05 }, { dx: 0.6, dy: 0.15 }, { dx: 1, dy: 0.3 }],           // Seam split
+
+  // Special
+  screen: [{ dx: -0.15, dy: 0.5 }, { dx: -0.1, dy: 0.6 }, { dx: 0.2, dy: 0.55 }, { dx: 1, dy: 0.3 }],
+  waggle: [{ dx: 0, dy: 0 }, { dx: -0.1, dy: 0.4 }, { dx: 0.3, dy: 0.5 }, { dx: 1, dy: 0.35 }],
+};
+
 /** Route waypoints: dx = forward progress 0→1, dy = lateral offset -1 to +1 */
-function getRouteShape(call: string, yardsGained: number): RoutePoint[] {
+function getRouteShape(call: string, yardsGained: number, routeConcept?: string): RoutePoint[] {
+  // Check concept-specific shape first
+  if (routeConcept && CONCEPT_ROUTES[routeConcept]) {
+    return CONCEPT_ROUTES[routeConcept];
+  }
+
+  // Fall back to call-based shapes
   switch (call) {
     case 'pass_quick':
     case 'pass_rpo':
@@ -58,8 +92,8 @@ function getRouteShape(call: string, yardsGained: number): RoutePoint[] {
       return [{ dx: 0, dy: 0 }, { dx: 0.3, dy: 0 }, { dx: 1, dy: 0.6 }];
     case 'pass_short':
     case 'play_action_short':
-      // Curl: upfield → stop → settle back
-      return [{ dx: 0, dy: 0 }, { dx: 0.5, dy: 0 }, { dx: 0.85, dy: -0.15 }, { dx: 0.75, dy: -0.1 }];
+      // Curl: upfield → overshoot → settle back to catch point
+      return [{ dx: 0, dy: 0 }, { dx: 0.55, dy: 0 }, { dx: 0.85, dy: -0.15 }, { dx: 1.0, dy: -0.05 }];
     case 'pass_medium':
       // Dig/In: upfield → sharp break across
       return [{ dx: 0, dy: 0 }, { dx: 0.55, dy: 0 }, { dx: 0.65, dy: 0.1 }, { dx: 1, dy: 0.7 }];
@@ -143,13 +177,22 @@ export function PlayScene({
       lastPlay.type === 'pregame' || lastPlay.type === 'coin_toss'
     ) return;
 
-    const isKickPlay = lastPlay.type === 'extra_point' || lastPlay.type === 'field_goal';
-    fromToRef.current = {
-      from: isKickPlay ? ballLeftPercent : prevBallLeftPercent,
-      to: ballLeftPercent,
-    };
-    const fromX = isKickPlay ? ballLeftPercent : prevBallLeftPercent;
+    // For kick plays, compute the correct origin:
+    // - Extra point: PAT snaps from ~15 yards out from the goal post the team is kicking toward
+    // - Field goal: snaps from the LOS (prevBallLeftPercent)
+    // Note: for XP, ballLeftPercent is already the POST-play kickoff position (own 35), not the snap spot
+    let fromX: number;
+    if (lastPlay.type === 'extra_point') {
+      const goalPostX = possession === 'away' ? 91.66 : 8.33;
+      // PAT snap is ~15 yards from goal post (12.5% of field width)
+      fromX = goalPostX + (goalPostX < 50 ? 12.5 : -12.5);
+    } else if (lastPlay.type === 'field_goal') {
+      fromX = prevBallLeftPercent;
+    } else {
+      fromX = prevBallLeftPercent;
+    }
     const toX = ballLeftPercent;
+    fromToRef.current = { from: fromX, to: toX };
 
     onAnimatingRef.current(true);
     updatePhase('pre_snap');
@@ -250,9 +293,9 @@ export function PlayScene({
         const color = playType === 'pass_complete' ? '#3b82f6' : '#ef4444';
         const qbX = fromX + offDir * (lastPlay.call === 'play_action_short' || lastPlay.call === 'play_action_deep' ? 4 : 3);
         const targetX = playType === 'pass_complete' ? toX : fromX - offDir * 12;
-        const route = getRouteShape(lastPlay.call, lastPlay.yardsGained);
+        const route = getRouteShape(lastPlay.call, lastPlay.yardsGained, lastPlay.routeConcept);
         const endPt = interpolateRoute(route, 1);
-        const lateralScale = playType === 'pass_complete' ? 18 : 12;
+        const lateralScale = playType === 'pass_complete' ? 28 : 18;
         const targetY = 50 + endPt.dy * lateralScale;
         const targetFieldX = qbX + (targetX - qbX) * endPt.dx;
         return (
@@ -558,32 +601,50 @@ function calculateRunPosition(
 
   switch (call) {
     case 'run_power': case 'run_zone': case 'run_inside': {
-      // Inside runs: mostly forward, small lateral drift, juke at 40%
-      const eased = easeOutQuad(t);
-      const x = fromX + (toX - fromX) * eased;
-      const drift = Math.sin(t * Math.PI * 2) * 6 * (1 - t);
-      const juke = t > 0.35 && t < 0.5 ? Math.sin((t - 0.35) * Math.PI / 0.15) * 4 : 0;
+      // Inside runs: mostly forward, larger lateral drift, juke at 40%, overshoot-then-settle
+      const travel = toX - fromX;
+      const overshootX = travel * 0.10; // 10% overshoot
+      let x: number;
+      if (t < 0.85) {
+        const eased = easeOutQuad(t / 0.85);
+        x = fromX + (travel + overshootX) * eased;
+      } else {
+        // Settle back from overshoot
+        const settleT = (t - 0.85) / 0.15;
+        x = fromX + travel + overshootX * (1 - easeOutQuad(settleT));
+      }
+      const drift = Math.sin(t * Math.PI * 2) * 10 * (1 - t);
+      const juke = t > 0.35 && t < 0.5 ? Math.sin((t - 0.35) * Math.PI / 0.15) * 8 : 0;
       return { x, y: 50 + drift + juke };
     }
     case 'run_outside_zone': case 'run_sweep': case 'run_outside': {
-      // Wide lateral sweep, turn corner at 35%, sprint upfield
+      // Wide lateral sweep, turn corner at 35%, sprint upfield with overshoot
+      const travel = toX - fromX;
+      const overshootX = travel * 0.10;
       if (t < 0.35) {
         // Lateral sweep phase
         const sweepT = easeOutQuad(t / 0.35);
-        const x = fromX + (toX - fromX) * 0.1 * sweepT;
-        const y = 50 + offDir * 22 * sweepT;
+        const x = fromX + travel * 0.1 * sweepT;
+        const y = 50 + offDir * 28 * sweepT;
         return { x, y };
       }
-      // Turn corner and sprint upfield
-      const sprintT = easeOutQuad((t - 0.35) / 0.65);
-      const cornerX = fromX + (toX - fromX) * 0.1;
-      const x = cornerX + (toX - cornerX) * sprintT;
-      const cornerY = 50 + offDir * 22;
-      const y = cornerY + (50 - cornerY) * easeOutCubic(sprintT);
+      // Turn corner and sprint upfield with overshoot-then-settle
+      const sprintPhaseT = (t - 0.35) / 0.65;
+      const cornerX = fromX + travel * 0.1;
+      let x: number;
+      if (sprintPhaseT < 0.85) {
+        const eased = easeOutQuad(sprintPhaseT / 0.85);
+        x = cornerX + (toX + overshootX - cornerX) * eased;
+      } else {
+        const settleT = (sprintPhaseT - 0.85) / 0.15;
+        x = toX + overshootX * (1 - easeOutQuad(settleT));
+      }
+      const cornerY = 50 + offDir * 28;
+      const y = cornerY + (50 - cornerY) * easeOutCubic(sprintPhaseT);
       return { x, y };
     }
     case 'run_draw': {
-      // Step back like a pass, pause, then burst forward
+      // Step back like a pass, pause, then burst forward with overshoot
       if (t < 0.25) {
         // Fake pass dropback
         const backT = easeOutQuad(t / 0.25);
@@ -595,54 +656,81 @@ function calculateRunPosition(
         const jitter = Math.sin((t - 0.25) * 30) * 0.5;
         return { x: qbX + jitter, y: 50 };
       }
-      // Burst forward
-      const burstT = easeOutCubic((t - 0.45) / 0.55);
+      // Burst forward with overshoot
+      const burstPhase = (t - 0.45) / 0.55;
       const startX = fromX + offDir * 3;
-      const x = startX + (toX - startX) * burstT;
-      const weave = Math.sin(burstT * Math.PI * 2) * 5 * (1 - burstT);
+      const travel = toX - startX;
+      const overshootX = travel * 0.10;
+      let x: number;
+      if (burstPhase < 0.85) {
+        const eased = easeOutCubic(burstPhase / 0.85);
+        x = startX + (travel + overshootX) * eased;
+      } else {
+        const settleT = (burstPhase - 0.85) / 0.15;
+        x = startX + travel + overshootX * (1 - easeOutQuad(settleT));
+      }
+      const weave = Math.sin(burstPhase * Math.PI * 2) * 10 * (1 - burstPhase);
       return { x, y: 50 + weave };
     }
     case 'run_counter': {
-      // Fake one direction, plant at 30%, cut back opposite
+      // Fake one direction, plant at 30%, cut back opposite with overshoot
+      const travel = toX - fromX;
+      const overshootX = travel * 0.10;
       if (t < 0.30) {
         const fakeT = easeOutQuad(t / 0.30);
-        const x = fromX + (toX - fromX) * 0.05 * fakeT;
-        return { x, y: 50 - offDir * 18 * fakeT };
+        const x = fromX + travel * 0.05 * fakeT;
+        return { x, y: 50 - offDir * 24 * fakeT };
       }
       if (t < 0.45) {
         // Plant and cut
         const cutT = (t - 0.30) / 0.15;
-        const fakeX = fromX + (toX - fromX) * 0.05;
-        const x = fakeX + (toX - fromX) * 0.1 * cutT;
-        const fakeY = 50 - offDir * 18;
-        return { x, y: fakeY + offDir * 30 * easeInOutQuad(cutT) };
+        const fakeX = fromX + travel * 0.05;
+        const x = fakeX + travel * 0.1 * cutT;
+        const fakeY = 50 - offDir * 24;
+        return { x, y: fakeY + offDir * 40 * easeInOutQuad(cutT) };
       }
-      // Sprint to destination
-      const sprintT = easeOutQuad((t - 0.45) / 0.55);
-      const cutX = fromX + (toX - fromX) * 0.15;
-      const cutY = 50 + offDir * 12;
-      const x = cutX + (toX - cutX) * sprintT;
-      const y = cutY + (50 - cutY) * sprintT;
+      // Sprint to destination with overshoot
+      const sprintPhase = (t - 0.45) / 0.55;
+      const cutX = fromX + travel * 0.15;
+      const cutY = 50 + offDir * 16;
+      let x: number;
+      if (sprintPhase < 0.85) {
+        const eased = easeOutQuad(sprintPhase / 0.85);
+        x = cutX + (toX + overshootX - cutX) * eased;
+      } else {
+        const settleT = (sprintPhase - 0.85) / 0.15;
+        x = toX + overshootX * (1 - easeOutQuad(settleT));
+      }
+      const y = cutY + (50 - cutY) * sprintPhase;
       return { x, y };
     }
     case 'run_option': {
-      // Mesh point delay, read, commit
+      // Mesh point delay, read, commit with overshoot
+      const travel = toX - fromX;
+      const overshootX = travel * 0.10;
       if (t < 0.20) {
         // Mesh point — move laterally along LOS
         const meshT = t / 0.20;
-        return { x: fromX, y: 50 + offDir * 8 * meshT };
+        return { x: fromX, y: 50 + offDir * 14 * meshT };
       }
       if (t < 0.40) {
         // Read phase — slight forward movement
         const readT = (t - 0.20) / 0.20;
-        const x = fromX + (toX - fromX) * 0.1 * readT;
-        return { x, y: 50 + offDir * 8 };
+        const x = fromX + travel * 0.1 * readT;
+        return { x, y: 50 + offDir * 14 };
       }
-      // Commit burst
-      const burstT = easeOutQuad((t - 0.40) / 0.60);
-      const startX = fromX + (toX - fromX) * 0.1;
-      const x = startX + (toX - startX) * burstT;
-      const y = 50 + offDir * 8 * (1 - burstT);
+      // Commit burst with overshoot
+      const burstPhase = (t - 0.40) / 0.60;
+      const startX = fromX + travel * 0.1;
+      let x: number;
+      if (burstPhase < 0.85) {
+        const eased = easeOutQuad(burstPhase / 0.85);
+        x = startX + (toX + overshootX - startX) * eased;
+      } else {
+        const settleT = (burstPhase - 0.85) / 0.15;
+        x = toX + overshootX * (1 - easeOutQuad(settleT));
+      }
+      const y = 50 + offDir * 14 * (1 - burstPhase);
       return { x, y };
     }
     case 'run_qb_sneak': {
@@ -653,10 +741,18 @@ function calculateRunPosition(
       return { x, y: 50 + wobble };
     }
     default: {
-      // Default run: forward with moderate weave
-      const eased = easeOutQuad(t);
-      const x = fromX + (toX - fromX) * eased;
-      const weave = Math.sin(t * Math.PI * 3) * 5 * (1 - t);
+      // Default run: forward with moderate weave and overshoot
+      const travel = toX - fromX;
+      const overshootX = travel * 0.08;
+      let x: number;
+      if (t < 0.85) {
+        const eased = easeOutQuad(t / 0.85);
+        x = fromX + (travel + overshootX) * eased;
+      } else {
+        const settleT = (t - 0.85) / 0.15;
+        x = fromX + travel + overshootX * (1 - easeOutQuad(settleT));
+      }
+      const weave = Math.sin(t * Math.PI * 3) * 10 * (1 - t);
       return { x, y: 50 + weave };
     }
   }
@@ -665,13 +761,22 @@ function calculateRunPosition(
 // ── Scramble Position ────────────────────────────────────────
 
 function calculateScramblePosition(
-  fromX: number, toX: number, t: number, offDir: number,
+  fromX: number, toX: number, t: number, _offDir: number,
 ): { x: number; y: number } {
-  const eased = easeOutCubic(t);
-  const x = fromX + (toX - fromX) * eased;
-  // Enhanced weave: 4 direction changes with ±12 amplitude
-  const weave = Math.sin(t * Math.PI * 4) * 12 * (1 - t * 0.7);
-  const secondaryWeave = Math.cos(t * Math.PI * 2.5) * 4 * (1 - t);
+  // Overshoot-then-settle for scrambles
+  const travel = toX - fromX;
+  const overshootX = travel * 0.12;
+  let x: number;
+  if (t < 0.85) {
+    const eased = easeOutCubic(t / 0.85);
+    x = fromX + (travel + overshootX) * eased;
+  } else {
+    const settleT = (t - 0.85) / 0.15;
+    x = fromX + travel + overshootX * (1 - easeOutQuad(settleT));
+  }
+  // Enhanced weave: 4 direction changes with ±18 amplitude
+  const weave = Math.sin(t * Math.PI * 4) * 18 * (1 - t * 0.7);
+  const secondaryWeave = Math.cos(t * Math.PI * 2.5) * 6 * (1 - t);
   return { x, y: 50 + weave + secondaryWeave };
 }
 
@@ -706,13 +811,13 @@ function calculatePassPosition(
     const throwT = (t - holdEnd) / (throwEnd - holdEnd);
     const smoothT = easeInOutQuad(throwT);
     const qbX = fromX + offDir * (isPlayAction ? 4 : 3);
-    const route = getRouteShape(play.call, play.yardsGained);
+    const route = getRouteShape(play.call, play.yardsGained, play.routeConcept);
     const rPt = interpolateRoute(route, smoothT);
 
     // Map route dx/dy to field coordinates
     const routeDistX = toX - qbX;
     const x = qbX + routeDistX * rPt.dx;
-    const lateralScale = 18;
+    const lateralScale = 28;
     const routeY = 50 + rPt.dy * lateralScale;
 
     // Add arc height for "ball in air" feel (not for screens)
@@ -725,7 +830,7 @@ function calculatePassPosition(
   const racT = (t - throwEnd) / (1 - throwEnd);
   const route = getRouteShape(play.call, play.yardsGained);
   const endPt = interpolateRoute(route, 1);
-  const catchY = 50 + endPt.dy * 18;
+  const catchY = 50 + endPt.dy * 28;
   return { x: toX, y: catchY + (50 - catchY) * easeOutQuad(racT) };
 }
 
@@ -752,12 +857,12 @@ function calculateIncompletePassPosition(
     const smoothT = easeInOutQuad(throwT);
     const qbX = fromX + offDir * 3;
     const targetX = fromX - offDir * 12;
-    const route = getRouteShape(play.call, play.yardsGained);
+    const route = getRouteShape(play.call, play.yardsGained, play.routeConcept);
     const rPt = interpolateRoute(route, smoothT);
 
     const routeDistX = targetX - qbX;
     const x = qbX + routeDistX * rPt.dx;
-    const routeY = 50 + rPt.dy * 12;
+    const routeY = 50 + rPt.dy * 18;
     const arcHeight = Math.min(Math.abs(routeDistX) * 0.4, 16);
     const arc = arcHeight * Math.sin(smoothT * Math.PI);
     return { x, y: routeY - arc };
@@ -769,26 +874,26 @@ function calculateIncompletePassPosition(
   const route = getRouteShape(play.call, play.yardsGained);
   const endPt = interpolateRoute(route, 1);
   const fallX = qbX + (targetX - qbX) * 0.9;
-  const fallY = 50 + endPt.dy * 12;
+  const fallY = 50 + endPt.dy * 18;
   return { x: fallX + (targetX - fallX) * dropT * 0.2, y: fallY + dropT * 15 };
 }
 
 // ── Kickoff Position (two-phase: arc + return) ──────────────
 
 function calculateKickoffPosition(
-  play: PlayResult, fromX: number, toX: number, t: number, offDir: number,
+  play: PlayResult, fromX: number, toX: number, t: number, _offDir: number,
 ): { x: number; y: number } {
   const isTouchback = play.yardsGained === 0;
-  const totalDist = toX - fromX;
-  // Landing point: deep in receiving territory (85% of way to far end zone)
-  const farEndZone = offDir === 1 ? 8.33 : 91.66;
-  const landingX = fromX + (farEndZone - fromX) * 0.85;
+  // Direction based on actual ball travel, not offensive direction
+  const kickDir = toX < fromX ? -1 : 1;
+  const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
+  const landingX = fromX + (receiverEndZone - fromX) * 0.85;
 
   if (isTouchback) {
     // Single phase: arc into end zone, ball stops
     const eased = easeInOutQuad(t);
-    const x = fromX + (farEndZone - fromX) * 0.9 * eased;
-    const arcHeight = 38;
+    const x = fromX + (receiverEndZone - fromX) * 0.9 * eased;
+    const arcHeight = 42;
     return { x, y: 50 - arcHeight * Math.sin(t * Math.PI) };
   }
 
@@ -799,7 +904,7 @@ function calculateKickoffPosition(
     const kickT = t / kickPhaseEnd;
     const eased = easeInOutQuad(kickT);
     const x = fromX + (landingX - fromX) * eased;
-    const arcHeight = 38;
+    const arcHeight = 42;
     return { x, y: 50 - arcHeight * Math.sin(kickT * Math.PI) };
   }
 
@@ -811,7 +916,7 @@ function calculateKickoffPosition(
   // Lateral cuts during return
   const isTdReturn = play.isTouchdown;
   const numCuts = isTdReturn ? 4 : 3;
-  const amplitude = isTdReturn ? 15 : 10;
+  const amplitude = isTdReturn ? 22 : 16;
   const decay = 1 - returnT * 0.4;
   const cuts = Math.sin(returnT * Math.PI * numCuts) * amplitude * decay;
 
@@ -821,7 +926,7 @@ function calculateKickoffPosition(
 // ── Punt Position (two-phase: arc + return) ──────────────────
 
 function calculatePuntPosition(
-  play: PlayResult, fromX: number, toX: number, t: number, offDir: number,
+  play: PlayResult, fromX: number, toX: number, t: number, _offDir: number,
 ): { x: number; y: number } {
   const desc = (play.description || '').toLowerCase();
   const isFairCatch = desc.includes('fair catch');
@@ -836,8 +941,9 @@ function calculatePuntPosition(
   }
 
   const kickPhaseEnd = 0.45; // Punt hangs longer
-  // Landing overshoots toX by 20% of distance
-  const overshoot = (toX - fromX) * 0.2;
+  // Overshoot direction-aware: punt travels fromX → toX, overshoot goes further in that direction
+  const travelDist = toX - fromX;
+  const overshoot = travelDist * 0.2;
   const landingX = toX + overshoot;
 
   if (t < kickPhaseEnd) {
@@ -854,7 +960,7 @@ function calculatePuntPosition(
   const returnT = (t - kickPhaseEnd) / (1 - kickPhaseEnd);
   const eased = easeOutQuad(returnT);
   const x = landingX + (toX - landingX) * eased;
-  const amplitude = play.isTouchdown ? 12 : 8;
+  const amplitude = play.isTouchdown ? 18 : 14;
   const cuts = Math.sin(returnT * Math.PI * 3) * amplitude * (1 - returnT * 0.5);
 
   return { x, y: 50 + cuts };
@@ -909,7 +1015,7 @@ function PlayTrajectory({
       const qbX = fromX + offDir * (lastPlay.call === 'play_action_short' || lastPlay.call === 'play_action_deep' ? 4 : 3);
       const targetX = playType === 'pass_complete' ? toX : fromX - offDir * 12;
       // Draw route shape as dashed line
-      const route = getRouteShape(lastPlay.call, lastPlay.yardsGained);
+      const route = getRouteShape(lastPlay.call, lastPlay.yardsGained, lastPlay.routeConcept);
       const routeSamples = 12;
       const routeDistX = targetX - qbX;
       const routePoints: { x: number; y: number }[] = [];
@@ -918,7 +1024,7 @@ function PlayTrajectory({
         const rPt = interpolateRoute(route, sT);
         routePoints.push({
           x: qbX + routeDistX * rPt.dx,
-          y: 50 + rPt.dy * (playType === 'pass_complete' ? 18 : 12),
+          y: 50 + rPt.dy * (playType === 'pass_complete' ? 28 : 18),
         });
       }
       const routeD = `M ${routePoints[0].x} ${routePoints[0].y} ` + routePoints.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ');
@@ -948,18 +1054,20 @@ function PlayTrajectory({
       const isTouchback = lastPlay.yardsGained === 0 || desc.includes('touchback');
       const kickPhaseEnd = isKickoff ? 0.32 : 0.45;
 
-      // Calculate landing point
+      // Calculate landing point using travel direction, not offDir
       let landingX: number;
       if (isKickoff) {
-        const farEndZone = offDir === 1 ? 8.33 : 91.66;
-        landingX = isTouchback ? fromX + (farEndZone - fromX) * 0.9 : fromX + (farEndZone - fromX) * 0.85;
+        const kickDir = toX < fromX ? -1 : 1;
+        const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
+        landingX = isTouchback ? fromX + (receiverEndZone - fromX) * 0.9 : fromX + (receiverEndZone - fromX) * 0.85;
       } else {
-        const overshoot = (toX - fromX) * 0.2;
+        const travelDist = toX - fromX;
+        const overshoot = travelDist * 0.2;
         landingX = (isFairCatch || isTouchback) ? toX : toX + overshoot;
       }
 
       const dist = Math.abs(landingX - fromX);
-      const arcH = isKickoff ? 38 : Math.min(dist * 0.9, 38);
+      const arcH = isKickoff ? 42 : Math.min(dist * 0.9, 38);
       const midX = (fromX + landingX) / 2;
 
       // Kick arc (dashed gold)

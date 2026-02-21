@@ -19,6 +19,7 @@ import type {
   PlayResult,
   Player,
   Position,
+  RouteConcept,
   SeededRNG,
   WeightedOption,
   YardDistribution,
@@ -52,6 +53,7 @@ import {
 
 import { getFormationModifiers } from './formations';
 import { getDefensiveModifiers } from './defensive-coordinator';
+import { getRouteConceptModifiers } from './route-concepts';
 
 // ============================================================================
 // Extended Yard Distributions for New Play Types
@@ -606,6 +608,7 @@ function resolvePassPlay(
   momentum: number,
   formation?: Formation,
   defensiveCall?: DefensiveCall,
+  routeConcept?: RouteConcept,
 ): PlayResult {
   const result = baseResult(call);
 
@@ -888,6 +891,14 @@ function resolvePassPlay(
   }
 
   // --------------------------------------------------------------------------
+  // Route concept vs coverage modifier (additive)
+  // --------------------------------------------------------------------------
+  if (routeConcept && defensiveCall) {
+    const rcMods = getRouteConceptModifiers(routeConcept, defensiveCall.coverage);
+    completionRate += rcMods.completionBonus;
+  }
+
+  // --------------------------------------------------------------------------
   // Clamp completion rate between reasonable bounds
   // --------------------------------------------------------------------------
   completionRate = Math.max(0.15, Math.min(0.95, completionRate));
@@ -919,6 +930,12 @@ function resolvePassPlay(
       yards += rng.randomInt(15, 30);
     } else if (rng.probability(BIG_PLAY_RATE)) {
       yards += rng.randomInt(15, 30);
+    }
+
+    // Route concept vs coverage yards bonus
+    if (routeConcept && defensiveCall) {
+      const rcMods = getRouteConceptModifiers(routeConcept, defensiveCall.coverage);
+      yards += rcMods.yardsBonus;
     }
 
     // Round and clamp
@@ -1520,7 +1537,7 @@ function resolveKneel(
   const result = baseResult('kneel');
   result.type = 'kneel';
 
-  const qb = getPlayerByPosition(offensePlayers, 'QB')!;
+  const qb = getQBOrFallback(offensePlayers);
   result.rusher = qb;
   result.yardsGained = -1;
   result.isClockStopped = false;
@@ -1565,6 +1582,7 @@ export function resolvePlay(
   momentum: number,
   formation?: Formation,
   defensiveCall?: DefensiveCall,
+  routeConcept?: RouteConcept,
 ): PlayResult {
   switch (call) {
     // ---- Run plays ----
@@ -1589,7 +1607,7 @@ export function resolvePlay(
     case 'play_action_short':
     case 'play_action_deep':
     case 'pass_rpo':
-      return resolvePassPlay(call, state, offensePlayers, defensePlayers, rng, momentum, formation, defensiveCall);
+      return resolvePassPlay(call, state, offensePlayers, defensePlayers, rng, momentum, formation, defensiveCall, routeConcept);
 
     // ---- Special teams ----
     case 'punt':

@@ -60,6 +60,8 @@ const RUN_TEMPLATES: TemplateCategory = {
     { playByPlay: '{rusher} churns his legs for {yards} yards!', colorAnalysis: 'Pure effort. He wanted that first down.', crowdReaction: 'cheer' },
     { playByPlay: '{rusher} hits the edge and turns the corner for {yards}!', colorAnalysis: 'That speed around the corner is hard to stop.', crowdReaction: 'cheer' },
     { playByPlay: '{rusher} with a strong run, {yards} yards!', colorAnalysis: "The defense doesn't want to tackle this man one-on-one.", crowdReaction: 'cheer' },
+    { playByPlay: '{rusher} out of {personnel} finds a lane for {yards}!', colorAnalysis: 'That heavy personnel grouping is opening holes all day.', crowdReaction: 'cheer' },
+    { playByPlay: '{rusher} runs through the {stunt} stunt for {yards} yards!', colorAnalysis: 'The defense tried to get cute and got burned for it.', crowdReaction: 'cheer' },
   ],
   high: [
     { playByPlay: '{rusher} BURSTS through! {yards} yards and he is STILL going!', colorAnalysis: 'You CANNOT bring this man down!', crowdReaction: 'roar' },
@@ -101,6 +103,10 @@ const PASS_COMPLETE_TEMPLATES: TemplateCategory = {
     { playByPlay: '{passer} finds the open man! {receiver} for {yards} yards!', colorAnalysis: 'He went through his progressions and found the soft spot.', crowdReaction: 'cheer' },
     { playByPlay: '{passer} connects with {receiver} across the middle for {yards}!', colorAnalysis: "That's a money throw. That's what separates the great ones.", crowdReaction: 'cheer' },
     { playByPlay: '{passer} zips it to {receiver} for {yards} yards!', colorAnalysis: 'Look at the zip on that ball. Perfectly timed.', crowdReaction: 'cheer' },
+    { playByPlay: '{passer} reads the coverage and hits {receiver} on the {concept} concept for {yards}!', colorAnalysis: "That's the pre-snap read paying off. He knew exactly where to go with it.", crowdReaction: 'cheer' },
+    { playByPlay: '{passer} out of {personnel}, fires to {receiver} for {yards} yards!', colorAnalysis: 'That personnel grouping gave them the matchup they wanted.', crowdReaction: 'cheer' },
+    { playByPlay: '{passer} runs the {concept} route perfectly with {receiver} for {yards}!', colorAnalysis: "The defense can't cover that route concept. It's schemed wide open.", crowdReaction: 'cheer' },
+    { playByPlay: '{passer} hits {receiver} on the {concept} for {yards} against the {front} front!', colorAnalysis: 'That defensive front left them vulnerable in coverage.', crowdReaction: 'cheer' },
   ],
   high: [
     { playByPlay: '{passer} LAUNCHES it deep... {receiver} HAS IT! {yards} YARDS!', colorAnalysis: 'WHAT a throw! WHAT a catch! This crowd is on their FEET!', crowdReaction: 'roar' },
@@ -111,6 +117,8 @@ const PASS_COMPLETE_TEMPLATES: TemplateCategory = {
     { playByPlay: 'DEEP BALL! {passer} to {receiver}! {yards} yards and the sideline is GOING CRAZY!', colorAnalysis: 'That is a BEAUTIFUL throw! Right on the money!', crowdReaction: 'roar' },
     { playByPlay: '{passer} lets it FLY! {receiver} goes UP and GETS IT! {yards} yards!', colorAnalysis: 'Moss-like! That was a man among boys right there!', crowdReaction: 'roar' },
     { playByPlay: '{receiver} with a SPECTACULAR catch! {yards} yards from {passer}!', colorAnalysis: 'Are you KIDDING me?! How did he hold on to that?!', crowdReaction: 'roar' },
+    { playByPlay: '{passer} reads the coverage PERFECTLY! The {concept} concept is MONEY! {yards} YARDS!', colorAnalysis: 'THAT is what happens when you scheme against that coverage! BRILLIANT!', crowdReaction: 'roar' },
+    { playByPlay: '{passer} with the {concept} route to {receiver}! {yards} YARDS! INCREDIBLE!', colorAnalysis: 'You CANNOT defend that concept when it is run THAT well!', crowdReaction: 'roar' },
   ],
 };
 
@@ -161,6 +169,8 @@ const SACK_TEMPLATES: TemplateCategory = {
     { playByPlay: '{passer} goes DOWN! Sacked by {defender} for a loss of {yards}!', colorAnalysis: "That's a huge play for the defense. Big momentum shift.", crowdReaction: 'roar' },
     { playByPlay: '{defender} blows past the blocker and DROPS {passer}! Loss of {yards}!', colorAnalysis: 'Speed kills! That pass rush is relentless today!', crowdReaction: 'roar' },
     { playByPlay: 'SACK! {defender} wraps up {passer} for a loss of {yards}!', colorAnalysis: 'The offensive line is struggling to handle that pass rush.', crowdReaction: 'roar' },
+    { playByPlay: '{defender} runs the {rushGame} game and GETS {passer}! Loss of {yards}!', colorAnalysis: 'That twist stunt completely fooled the offensive line!', crowdReaction: 'roar' },
+    { playByPlay: '{defender} off the {front} front GETS to {passer}! Sacked for a loss of {yards}!', colorAnalysis: 'That front alignment gave them the mismatch they wanted.', crowdReaction: 'roar' },
   ],
   high: [
     { playByPlay: '{defender} CRUSHES {passer}! HUGE SACK! Loss of {yards}!', colorAnalysis: "That is a DEVASTATING hit! He didn't even see him coming!", crowdReaction: 'roar' },
@@ -483,6 +493,35 @@ const SITUATIONAL_COLOR: string[] = [
 // ============================================================================
 // HELPER: Map penalty types to human-readable names
 // ============================================================================
+
+// ---------------------------------------------------------------------------
+// ROUTE CONCEPT & DEFENSIVE SCHEME DISPLAY NAMES
+// ---------------------------------------------------------------------------
+
+const CONCEPT_DISPLAY: Record<string, string> = {
+  hitch: 'hitch', curl: 'curl', shake: 'shake', angle: 'angle', stick: 'stick',
+  semi: 'semi', bench: 'bench', drive: 'drive', cross: 'crossing', blinky: 'blinky',
+  go: 'go', cab: 'cab', pylon: 'pylon', x_ray: 'x-ray', delta: 'delta',
+  screen: 'screen', waggle: 'waggle',
+};
+
+const PERSONNEL_DISPLAY: Record<string, string> = {
+  '00': '5-wide', '10': '10 personnel', '11': '11 personnel',
+  '12': '12 personnel', '13': '13 personnel',
+  '21': '21 personnel', '22': '22 personnel',
+};
+
+const FRONT_DISPLAY: Record<string, string> = {
+  odd: 'Odd', over: 'Over', under: 'Under', reduce: 'Reduce', sink_46: '46',
+};
+
+const RUSH_GAME_DISPLAY: Record<string, string> = {
+  t_e: 'T-E', e_t: 'E-T', tom: 'Tom',
+};
+
+const STUNT_DISPLAY: Record<string, string> = {
+  stir: 'Stir', knife: 'Knife',
+};
 
 const PENALTY_NAMES: Record<string, string> = {
   holding_offense: 'Offensive Holding',
@@ -814,6 +853,23 @@ export function buildTemplateVars(
 
   // Punter name: use passer or rusher as stand-in
   vars.punter = play.passer?.name || play.rusher?.name || 'The punter';
+
+  // Route concept and defensive scheme vars
+  if (play.routeConcept) {
+    vars.concept = CONCEPT_DISPLAY[play.routeConcept] || play.routeConcept;
+  }
+  if (play.personnelGrouping) {
+    vars.personnel = PERSONNEL_DISPLAY[play.personnelGrouping] || play.personnelGrouping;
+  }
+  if (play.defensiveCall?.front) {
+    vars.front = FRONT_DISPLAY[play.defensiveCall.front] || play.defensiveCall.front;
+  }
+  if (play.defensiveCall?.passRushGame && play.defensiveCall.passRushGame !== 'none') {
+    vars.rushGame = RUSH_GAME_DISPLAY[play.defensiveCall.passRushGame] || play.defensiveCall.passRushGame;
+  }
+  if (play.defensiveCall?.runStunt && play.defensiveCall.runStunt !== 'none') {
+    vars.stunt = STUNT_DISPLAY[play.defensiveCall.runStunt] || play.defensiveCall.runStunt;
+  }
 
   return vars;
 }

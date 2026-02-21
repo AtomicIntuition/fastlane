@@ -43,6 +43,9 @@ import { selectPlay } from './play-caller';
 import { resolvePlay } from './play-generator';
 import { selectFormation } from './formations';
 import { callDefense } from './defensive-coordinator';
+import { selectPersonnelGrouping, selectFormationWithPersonnel } from './personnel';
+import { selectRouteConcept } from './route-concepts';
+import type { PlayCall } from './types';
 
 // --- Clock ---
 import {
@@ -170,6 +173,11 @@ function getDefensePlayers(
   awayPlayers: Player[]
 ): Player[] {
   return state.possession === 'home' ? awayPlayers : homePlayers;
+}
+
+/** Check if a play call is a pass play that could use a route concept. */
+function isPassPlayCall(call: PlayCall): boolean {
+  return call.startsWith('pass_') || call.startsWith('play_action') || call === 'screen_pass';
 }
 
 /** Find a player by position from a roster. */
@@ -433,10 +441,17 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
     const offensePlayers = getOffensePlayers(state, availableHome, availableAway);
     const defensePlayers = getDefensePlayers(state, availableHome, availableAway);
 
-    // --- (b) Select formation and play call ---
-    // Formation selection considers game situation and team playStyle
+    // --- (b) Select personnel grouping, formation, and play call ---
+    // Personnel grouping constrains which formations are available
+    const personnelGrouping = (!state.kickoff && !state.patAttempt)
+      ? selectPersonnelGrouping(state, rng)
+      : undefined;
+
+    // Formation selection: constrained by personnel if available
     const formation = (!state.kickoff && !state.patAttempt)
-      ? selectFormation(state, rng)
+      ? (personnelGrouping
+          ? selectFormationWithPersonnel(state, personnelGrouping, rng)
+          : selectFormation(state, rng))
       : undefined;
 
     const playCall = selectPlay(state, rng, formation);
@@ -444,6 +459,11 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
     // --- (b2) Defensive coordinator calls scheme based on offensive formation ---
     const defensiveCall = (formation && !state.kickoff && !state.patAttempt)
       ? callDefense(state, formation, rng)
+      : undefined;
+
+    // --- (b3) Route concept for pass plays ---
+    const routeConcept = (isPassPlayCall(playCall) && defensiveCall)
+      ? selectRouteConcept(playCall, defensiveCall, rng)
       : undefined;
 
     // --- (c) Resolve the play based on type ---
@@ -477,11 +497,14 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
         momentum / 100, // normalize momentum to -1..1 range for play generator
         formation,
         defensiveCall,
+        routeConcept,
       );
 
       // Attach formation & defense data to PlayResult for UI rendering
       if (formation) playResult.formation = formation;
       if (defensiveCall) playResult.defensiveCall = defensiveCall;
+      if (personnelGrouping) playResult.personnelGrouping = personnelGrouping;
+      if (routeConcept) playResult.routeConcept = routeConcept;
     }
 
     // --- (d) Check for penalty ---

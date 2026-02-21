@@ -233,11 +233,36 @@ export type BlitzPackage =
   | 'all_out'         // 6-7 rushers (cover-0 all-out)
   | 'zone_blitz';     // 5 rushers with zone coverage behind
 
+/** Offensive personnel grouping (RBs x TEs, WRs implied). */
+export type PersonnelGrouping = '00' | '10' | '11' | '12' | '13' | '21' | '22';
+
+/** Named route concept from the passing game playbook. */
+export type RouteConcept =
+  | 'hitch' | 'curl' | 'shake' | 'angle' | 'stick'       // short
+  | 'semi' | 'bench' | 'drive' | 'cross' | 'blinky'      // medium
+  | 'go' | 'cab' | 'pylon' | 'x_ray' | 'delta'           // deep
+  | 'screen' | 'waggle';                                   // special
+
+/** Defensive front alignment (Rex Ryan 3-4 scheme). */
+export type DefensiveFront = 'odd' | 'over' | 'under' | 'reduce' | 'sink_46';
+
+/** Run defense stunt. */
+export type RunStunt = 'none' | 'stir' | 'knife';
+
+/** Pass rush game (twist/stunt between DL). */
+export type PassRushGame = 'none' | 't_e' | 'e_t' | 'tom';
+
 /** Complete defensive play call. */
 export interface DefensiveCall {
   personnel: DefensivePersonnel;
   coverage: CoverageType;
   blitz: BlitzPackage;
+  /** Defensive front alignment (3-4 base only). */
+  front?: DefensiveFront;
+  /** Run stunt (base personnel only). */
+  runStunt?: RunStunt;
+  /** Pass rush game (no-blitz situations only). */
+  passRushGame?: PassRushGame;
 }
 
 /** Complete offensive snap context passed to the play generator. */
@@ -272,6 +297,10 @@ export interface PlayResult {
   formation?: Formation;
   /** Defensive call used against this play (if applicable). */
   defensiveCall?: DefensiveCall;
+  /** Offensive personnel grouping (e.g. '11', '12', '21'). */
+  personnelGrouping?: PersonnelGrouping;
+  /** Named route concept used on pass plays. */
+  routeConcept?: RouteConcept;
 }
 
 // ============================================================
