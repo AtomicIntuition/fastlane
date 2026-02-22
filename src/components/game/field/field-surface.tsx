@@ -207,6 +207,25 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         );
       })}
 
+      {/* 5-yard intermediate lines */}
+      {Array.from({ length: 19 }, (_, i) => {
+        const yard = (i + 1) * 5;
+        if (yard % 10 === 0) return null; // Skip 10-yard lines
+        const x = 100 + yard * 10;
+        return (
+          <line
+            key={`5yd-${yard}`}
+            x1={x}
+            y1="0"
+            x2={x}
+            y2="534"
+            stroke="white"
+            strokeWidth="1"
+            opacity="0.12"
+          />
+        );
+      })}
+
       {/* Hash marks — every yard between the 10-yard lines */}
       {Array.from({ length: 99 }, (_, i) => {
         const yard = i + 1;
@@ -214,14 +233,14 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         const x = 100 + yard * 10;
         return (
           <g key={`hash-${yard}`}>
-            {/* Top hash */}
-            <line x1={x} y1="160" x2={x} y2="175" stroke="white" strokeWidth="1" opacity="0.15" />
-            {/* Bottom hash */}
-            <line x1={x} y1="359" x2={x} y2="374" stroke="white" strokeWidth="1" opacity="0.15" />
+            {/* Top hash — taller, brighter */}
+            <line x1={x} y1="158" x2={x} y2="178" stroke="white" strokeWidth="1" opacity="0.20" />
+            {/* Bottom hash — taller, brighter */}
+            <line x1={x} y1="356" x2={x} y2="376" stroke="white" strokeWidth="1" opacity="0.20" />
             {/* Top sideline tick */}
-            <line x1={x} y1="20" x2={x} y2="32" stroke="white" strokeWidth="0.8" opacity="0.1" />
+            <line x1={x} y1="20" x2={x} y2="34" stroke="white" strokeWidth="0.8" opacity="0.14" />
             {/* Bottom sideline tick */}
-            <line x1={x} y1="502" x2={x} y2="514" stroke="white" strokeWidth="0.8" opacity="0.1" />
+            <line x1={x} y1="500" x2={x} y2="514" stroke="white" strokeWidth="0.8" opacity="0.14" />
           </g>
         );
       })}

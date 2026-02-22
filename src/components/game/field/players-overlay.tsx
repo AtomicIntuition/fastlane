@@ -19,6 +19,7 @@ import {
 } from './play-scene';
 import type { Phase } from './play-scene';
 import { getTeamLogoUrl } from '@/lib/utils/team-logos';
+import { YARD_PCT, YARDS } from './yard-grid';
 
 // Re-export route shapes for WR animations
 const CONCEPT_ROUTES: Record<string, { dx: number; dy: number }[]> = {
@@ -402,8 +403,9 @@ export function PlayersOverlay({
           const route = isPrimary
             ? getRouteForConcept(lastPlay!.routeConcept, lastPlay!.call)
             : COMPLEMENT_ROUTES[wrCount % COMPLEMENT_ROUTES.length];
-          const routeScale = isPrimary ? 18 : 12;
-          const lateralScale = isPrimary ? 10 : 6;
+          const playDepth = Math.abs(toX - fromX);
+          const routeScale = isPrimary ? Math.max(playDepth, YARDS.SHORT_ROUTE) : Math.max(playDepth * 0.7, YARDS.SHORT_ROUTE);
+          const lateralScale = isPrimary ? routeScale * 0.4 : routeScale * 0.25;
 
           const pts: string[] = [];
           for (let step = 0; step <= 20; step++) {
@@ -472,22 +474,20 @@ export function PlayersOverlay({
       // ── Pass plays ──
       if (playType === 'pass_complete' || playType === 'pass_incomplete' || playType === 'sack') {
         if (isOL) {
-          // OL kicks back into pass protection — visible retreat
+          // OL pass protection kick (1.5 yards)
           return {
             ...p,
-            x: clamp(p.x + offDir * (2.5 * eased), 2, 98),
+            x: clamp(p.x + offDir * (YARDS.OL_PASS_SET * eased), 2, 98),
             y: p.y + Math.sin(t * 3 + i) * 0.5,
             role: p.role,
           };
         }
         if (isQB) {
           if (playType === 'sack') {
-            // QB drops back then gets collapsed on
-            const dropDist = 4;
+            const dropDist = YARDS.SHORT_DROP;
             if (t < 0.35) {
               return { ...p, x: clamp(p.x + offDir * dropDist * (t / 0.35), 2, 98), role: p.role };
             }
-            // Collapse toward sack point
             const sackT = (t - 0.35) / 0.65;
             return {
               ...p,
@@ -496,8 +496,8 @@ export function PlayersOverlay({
               role: p.role,
             };
           }
-          // QB drops back — play action drops deeper
-          const dropDist = play.call?.includes('play_action') ? 5 : 4;
+          // QB drops back — play action vs normal
+          const dropDist = play.call?.includes('play_action') ? YARDS.PA_DROP : YARDS.SHORT_DROP;
           const dropT = Math.min(t / 0.3, 1);
           return {
             ...p,
@@ -506,7 +506,7 @@ export function PlayersOverlay({
           };
         }
         if (isWR || isTE) {
-          // Receivers run routes — scaled up for visibility
+          // Receivers run routes — proportional to actual pass depth
           const routeIdx = startPositions.filter((pp, ii) => ii < i && (pp.role === 'WR' || pp.role === 'TE')).length;
           const isPrimary = routeIdx === 0;
           const route = isPrimary
@@ -514,8 +514,9 @@ export function PlayersOverlay({
             : COMPLEMENT_ROUTES[routeIdx % COMPLEMENT_ROUTES.length];
 
           const routePt = interpolateRoute(route, t);
-          const routeScale = isPrimary ? 18 : 12; // deeper routes for visibility
-          const lateralScale = isPrimary ? 10 : 6;
+          const playDepth = Math.abs(toX - fromX);
+          const routeScale = isPrimary ? Math.max(playDepth, YARDS.SHORT_ROUTE) : Math.max(playDepth * 0.7, YARDS.SHORT_ROUTE);
+          const lateralScale = isPrimary ? routeScale * 0.4 : routeScale * 0.25;
           return {
             ...p,
             x: clamp(p.x - offDir * routeScale * routePt.dx, 2, 98),
@@ -524,10 +525,10 @@ export function PlayersOverlay({
           };
         }
         if (isRB) {
-          // RB pass protects or leaks out for check-down
+          // RB check-down (2 yards)
           return {
             ...p,
-            x: clamp(p.x + offDir * 1.5 * eased, 2, 98),
+            x: clamp(p.x + offDir * (2 * YARD_PCT) * eased, 2, 98),
             y: p.y + Math.sin(t * 4) * 2,
             role: p.role,
           };
@@ -537,18 +538,18 @@ export function PlayersOverlay({
       // ── Run plays ──
       if (playType === 'run' || playType === 'scramble' || playType === 'two_point') {
         if (isOL) {
-          // OL fires forward aggressively — drive blocking
+          // OL drive block (2 yards)
           return {
             ...p,
-            x: clamp(p.x - offDir * 4 * eased, 2, 98),
+            x: clamp(p.x - offDir * YARDS.OL_RUN_PUSH * eased, 2, 98),
             y: p.y,
             role: p.role,
           };
         }
         if (isRB || (playType === 'scramble' && isQB)) {
-          // Ball carrier follows the ball path with lateral movement
+          // Ball carrier follows exact ball path
           const ballX = lerp(fromX, toX, eased);
-          const weave = Math.sin(t * Math.PI * 3) * 4 * (1 - t);
+          const weave = Math.sin(t * Math.PI * 3) * YARDS.MAX_WEAVE * (1 - t);
           return {
             ...p,
             x: clamp(ballX, 2, 98),
@@ -561,24 +562,24 @@ export function PlayersOverlay({
           const handoffT = Math.min(t / 0.2, 1);
           return {
             ...p,
-            x: clamp(p.x + offDir * 1.5 * easeOutCubic(handoffT), 2, 98),
+            x: clamp(p.x + offDir * (1.5 * YARD_PCT) * easeOutCubic(handoffT), 2, 98),
             role: p.role,
           };
         }
         if (isWR) {
-          // WRs stalk block downfield
+          // WRs stalk block downfield (5 yards)
           return {
             ...p,
-            x: clamp(p.x - offDir * 6 * eased, 2, 98),
+            x: clamp(p.x - offDir * (5 * YARD_PCT) * eased, 2, 98),
             y: p.y + (p.y > 50 ? 3 : -3) * eased,
             role: p.role,
           };
         }
         if (isTE) {
-          // TE lead blocks
+          // TE lead blocks (3 yards)
           return {
             ...p,
-            x: clamp(p.x - offDir * 3.5 * eased, 2, 98),
+            x: clamp(p.x - offDir * (3 * YARD_PCT) * eased, 2, 98),
             role: p.role,
           };
         }
@@ -587,25 +588,24 @@ export function PlayersOverlay({
       // ── Special teams ──
       if (playType === 'kickoff') {
         if (p.role === 'K') {
-          // Kicker run-up: approach ball with slight arc in first 15%, then drift forward
+          // Kicker run-up (3 yards approach), then drift forward
           if (t < 0.15) {
             const runT = t / 0.15;
-            const arcX = -offDir * 3 * easeOutCubic(runT); // approach ball
-            const arcY = Math.sin(runT * Math.PI) * 2; // slight lateral arc
+            const arcX = -offDir * YARDS.KICKER_APPROACH * easeOutCubic(runT);
+            const arcY = Math.sin(runT * Math.PI) * 2;
             return { ...p, x: clamp(p.x + arcX, 2, 98), y: clamp(p.y + arcY, 5, 95), role: p.role };
           }
-          // After kick: kicker drifts forward slowly (follow-through)
           const driftT = (t - 0.15) / 0.85;
-          return { ...p, x: clamp(p.x - offDir * 10 * easeOutCubic(driftT), 2, 98), role: p.role };
+          return { ...p, x: clamp(p.x - offDir * (10 * YARD_PCT) * easeOutCubic(driftT), 2, 98), role: p.role };
         }
-        // Coverage team — staggered starts per player, maintain lane discipline
-        const staggerDelay = (i % 5) * 0.03; // 0-12% delay per player
+        // Coverage team — 40 real yards sprint
+        const staggerDelay = (i % 5) * 0.03;
         const adjustedT = Math.max(0, t - staggerDelay);
         const covEased = easeOutCubic(adjustedT);
         return {
           ...p,
-          x: clamp(p.x - offDir * 40 * covEased, 2, 98),
-          y: clamp(p.y + Math.sin(adjustedT * 3 + i * 1.2) * 2, 5, 95), // slight discipline weave
+          x: clamp(p.x - offDir * (40 * YARD_PCT) * covEased, 2, 98),
+          y: clamp(p.y + Math.sin(adjustedT * 3 + i * 1.2) * 2, 5, 95),
           role: p.role,
         };
       }
@@ -665,9 +665,8 @@ export function PlayersOverlay({
         const isCatchPhase = t >= 0.35 && playType === 'pass_complete';
 
         if (isDL) {
-          const rushDist = playType === 'sack' ? 8 : 5;
+          const rushDist = playType === 'sack' ? (7 * YARD_PCT) : (4 * YARD_PCT);
           if (isCatchPhase) {
-            // Post-catch: DL pursue ball carrier
             const preX = p.x + offDir * rushDist * easeOutCubic(0.35);
             const pursuitT = (t - 0.35) / 0.65;
             return {
@@ -685,9 +684,9 @@ export function PlayersOverlay({
           };
         }
         if (isLB) {
+          const lbDist = 3 * YARD_PCT;
           if (isCatchPhase) {
-            // Post-catch: LBs pursue laterally toward ball
-            const preX = p.x - offDir * 3 * easeOutCubic(0.35);
+            const preX = p.x - offDir * lbDist * easeOutCubic(0.35);
             const preY = p.y + Math.sin(0.35 * 3 + i * 2) * 2;
             const pursuitT = (t - 0.35) / 0.65;
             return {
@@ -699,15 +698,15 @@ export function PlayersOverlay({
           }
           return {
             ...p,
-            x: clamp(p.x - offDir * 3 * eased, 2, 98),
+            x: clamp(p.x - offDir * lbDist * eased, 2, 98),
             y: p.y + Math.sin(t * 3 + i * 2) * 2,
             role: p.role,
           };
         }
         if (isCB) {
+          const cbDist = 5 * YARD_PCT;
           if (isCatchPhase) {
-            // Post-catch: CBs break toward catch point
-            const preX = p.x - offDir * 5 * easeOutCubic(0.35);
+            const preX = p.x - offDir * cbDist * easeOutCubic(0.35);
             const preY = p.y + Math.sin(0.35 * 4 + i) * 3;
             const pursuitT = (t - 0.35) / 0.65;
             return {
@@ -719,15 +718,15 @@ export function PlayersOverlay({
           }
           return {
             ...p,
-            x: clamp(p.x - offDir * 5 * eased, 2, 98),
+            x: clamp(p.x - offDir * cbDist * eased, 2, 98),
             y: p.y + Math.sin(t * 4 + i) * 3,
             role: p.role,
           };
         }
         if (isS) {
+          const sDist = 6 * YARD_PCT;
           if (isCatchPhase) {
-            // Post-catch: Safeties angle down toward ball
-            const preX = p.x - offDir * 6 * easeOutCubic(0.35);
+            const preX = p.x - offDir * sDist * easeOutCubic(0.35);
             const pursuitT = (t - 0.35) / 0.65;
             return {
               ...p,
@@ -738,7 +737,7 @@ export function PlayersOverlay({
           }
           return {
             ...p,
-            x: clamp(p.x - offDir * 6 * eased, 2, 98),
+            x: clamp(p.x - offDir * sDist * eased, 2, 98),
             role: p.role,
           };
         }
@@ -760,34 +759,32 @@ export function PlayersOverlay({
       // ── Kickoff return ──
       if (playType === 'kickoff') {
         if (p.role === 'KR') {
-          // KR waits for catch, then runs with 4-cut juke pattern
           if (t < KICKOFF_PHASE_END) return p;
           const returnT = (t - KICKOFF_PHASE_END) / (1 - KICKOFF_PHASE_END);
           const ballX = lerp(fromX, toX, easeOutCubic(returnT));
-          const amplitude = 14 * (1 - returnT * 0.5); // decaying juke amplitude
+          const amplitude = YARDS.MAX_SCRAMBLE_WEAVE * (1 - returnT * 0.5);
           return {
             ...p,
-            x: clamp(ballX + offDir * 5, 2, 98),
+            x: clamp(ballX + offDir * (5 * YARD_PCT), 2, 98),
             y: clamp(50 + Math.sin(returnT * Math.PI * 4) * amplitude, 5, 95),
             role: p.role,
           };
         }
         if (p.role === 'WDG') {
-          // Wedge blockers: form up ahead of returner, move as a unit
           if (t < KICKOFF_PHASE_END) return p;
           const returnT = (t - KICKOFF_PHASE_END) / (1 - KICKOFF_PHASE_END);
           const ballX = lerp(fromX, toX, easeOutCubic(returnT));
           return {
             ...p,
-            x: clamp(ballX + offDir * 10, 2, 98), // ahead of returner
-            y: clamp(p.y + (50 - p.y) * 0.3 * returnT, 5, 95), // converge toward center
+            x: clamp(ballX + offDir * (10 * YARD_PCT), 2, 98),
+            y: clamp(p.y + (50 - p.y) * 0.3 * returnT, 5, 95),
             role: p.role,
           };
         }
-        // Regular blockers: push toward coverage team
+        // Regular blockers
         return {
           ...p,
-          x: clamp(p.x + offDir * 20 * eased, 2, 98),
+          x: clamp(p.x + offDir * (20 * YARD_PCT) * eased, 2, 98),
           y: clamp(p.y + (50 - p.y) * 0.35 * eased, 5, 95),
           role: p.role,
         };
@@ -801,20 +798,20 @@ export function PlayersOverlay({
           return {
             ...p,
             x: clamp(lerp(p.x, toX, easeOutCubic(returnT)), 2, 98),
-            y: clamp(50 + Math.sin(returnT * Math.PI * 2) * 10, 5, 95),
+            y: clamp(50 + Math.sin(returnT * Math.PI * 2) * YARDS.MAX_SCRAMBLE_WEAVE, 5, 95),
             role: p.role,
           };
         }
         if (p.role === 'JAM') {
           return {
             ...p,
-            x: clamp(p.x + offDir * 4 * eased, 2, 98),
+            x: clamp(p.x + offDir * (4 * YARD_PCT) * eased, 2, 98),
             role: p.role,
           };
         }
         return {
           ...p,
-          x: clamp(p.x + offDir * 10 * eased, 2, 98),
+          x: clamp(p.x + offDir * (10 * YARD_PCT) * eased, 2, 98),
           role: p.role,
         };
       }
@@ -824,7 +821,7 @@ export function PlayersOverlay({
         if (isDL || p.role === 'RSH') {
           return {
             ...p,
-            x: clamp(p.x + offDir * 4 * eased, 2, 98),
+            x: clamp(p.x + offDir * (4 * YARD_PCT) * eased, 2, 98),
             role: p.role,
           };
         }
