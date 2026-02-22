@@ -13,7 +13,6 @@ import { FieldLines3D } from './field-lines-3d';
 import { DriveTrail3D } from './drive-trail-3d';
 import { BallMarker3D } from './ball-marker-3d';
 import { WeatherEffects } from './weather-effects';
-import { Stadium } from './stadium';
 
 interface FieldSceneProps {
   ballLeft: number;
@@ -65,24 +64,24 @@ export function FieldScene({
   const possessingTeam = possession === 'home' ? homeTeam : awayTeam;
 
   // Weather-driven fog distances
-  const fogNear = weather?.type === 'fog' ? 20 : 60;
-  const fogFar = weather?.type === 'fog' ? 60 : 150;
+  const fogNear = weather?.type === 'fog' ? 30 : 80;
+  const fogFar = weather?.type === 'fog' ? 80 : 200;
 
   return (
     <Canvas
       frameloop={isPlayAnimating ? 'always' : 'demand'}
       dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: false }}
-      camera={{ fov: 50, near: 0.1, far: 600, position: [ballWorldX - 20, 22, 0] }}
+      camera={{ fov: 50, near: 0.1, far: 600, position: [ballWorldX - 20, 22, 30] }}
       style={{ width: '100%', height: '100%', background: '#0a1a0a' }}
     >
-      {/* Fog for depth (adjusted by weather) — pushed further for stadium visibility */}
-      <fog attach="fog" args={['#0a1a0a', fogNear + 30, fogFar + 60]} />
+      {/* Fog for depth */}
+      <fog attach="fog" args={['#0a1a0a', fogNear, fogFar]} />
 
       {/* Lighting (weather-responsive) */}
       <StadiumLighting weather={weather} />
 
-      {/* Broadcast camera (preset-based with phase transitions) */}
+      {/* Single stable broadcast camera */}
       <BroadcastCamera
         ballX={ballWorldX}
         offenseDirection={offenseDirection}
@@ -97,8 +96,11 @@ export function FieldScene({
       {/* Goal posts */}
       <GoalPosts />
 
-      {/* Stadium bowl with stands, fans, press box */}
-      <Stadium homeColor={homeTeam.primaryColor} awayColor={awayTeam.primaryColor} />
+      {/* Dark surround ground plane (replaces stadium) */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]}>
+        <planeGeometry args={[400, 400]} />
+        <meshStandardMaterial color="#0a1a0a" roughness={1} />
+      </mesh>
 
       {/* Field markers (LOS + first down) */}
       <FieldLines3D
@@ -115,7 +117,7 @@ export function FieldScene({
         visible={showDriveTrail}
       />
 
-      {/* 22 player capsules with helmets */}
+      {/* 22 player capsules */}
       <PlayerModels
         ballPosition={ballLeft}
         prevBallPosition={prevBallLeft}

@@ -1,14 +1,14 @@
 'use client';
 
-import { useRef, useMemo, useCallback } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { PlayResult } from '@/lib/simulation/types';
-import type { Phase, PlayContext, ChoreographyFrame } from '@/lib/animation/types';
-import { computeFrame, getPhaseTimings, fieldPctToWorld } from '@/lib/animation/choreographer';
-import { computeFormationPositions, type DotPos } from '@/lib/animation/play-animation';
-import { getIdlePositions } from '@/components/game/field/formation-data';
-import type { EntityState } from '@/lib/animation/types';
+import type { Phase, EntityState } from '@/lib/animation/types';
+import {
+  computeDevelopment, getSnapPositions, getIdleEntities,
+  getDevelopmentMs, PRE_SNAP_MS, SNAP_MS, fieldPctToWorld,
+} from '@/lib/animation/choreographer';
 
 interface Football3DProps {
   ballPosition: number;
@@ -22,7 +22,6 @@ interface Football3DProps {
 /**
  * 3D football — position driven by choreographer ball ownership.
  * Ball is ALWAYS at its owner's position when held, or on a flight arc.
- * Spiral rotation on passes/kicks, gentle bob on carries.
  */
 export function Football3D({
   ballPosition,
@@ -40,25 +39,7 @@ export function Football3D({
   const offDir = possession === 'away' ? -1 : 1;
   const losX = prevBallPosition;
 
-  // Detect new play
-  if (playKey !== prevKeyRef.current) {
-    prevKeyRef.current = playKey;
-    animStartRef.current = performance.now();
-
-    if (lastPlay) {
-      const { offPositions, defPositions } = computeFormationPositions(lastPlay, losX, offDir);
-      snapOffRef.current = offPositions.map(p => ({
-        x: p.x, y: p.y, height: 0, role: p.role,
-        facing: -offDir * Math.PI / 2, animState: 'idle' as const,
-      }));
-      snapDefRef.current = defPositions.map(p => ({
-        x: p.x, y: p.y, height: 0, role: p.role,
-        facing: offDir * Math.PI / 2, animState: 'idle' as const,
-      }));
-    }
-  }
-
-  // Football materials
+  // Materials
   const material = useMemo(() => new THREE.MeshStandardMaterial({
     color: '#8B4513', roughness: 0.7, metalness: 0.1,
   }), []);
@@ -66,11 +47,22 @@ export function Football3D({
     color: '#ffffff', roughness: 0.5, metalness: 0,
   }), []);
 
+  // On new play: compute snap positions
+  useEffect(() => {
+    if (playKey === prevKeyRef.current || !lastPlay) return;
+    prevKeyRef.current = playKey;
+    animStartRef.current = performance.now();
+    const snap = getSnapPositions(lastPlay, losX, offDir);
+    snapOffRef.current = snap.offense;
+    snapDefRef.current = snap.defense;
+  }, [playKey, lastPlay, losX, offDir]);
+
   useFrame(() => {
     if (!meshRef.current) return;
     const group = meshRef.current;
 
     if (phase === 'idle') {
+      // Show ball at current position when idle
       const worldX = (ballPosition / 100) * 120 - 60;
       group.position.set(worldX, 0.4, 0);
       group.rotation.set(0, 0, 0);
@@ -80,62 +72,60 @@ export function Football3D({
 
     if (!lastPlay) return;
 
-    const ctx: PlayContext = {
-      play: lastPlay,
-      losX,
-      toX: ballPosition,
-      offDir,
-      possession,
-    };
+    const ctx = { play: lastPlay, losX, toX: ballPosition, offDir, possession };
 
-    const elapsed = performance.now() - animStartRef.current;
-    const timings = getPhaseTimings(lastPlay);
+    if (phase === 'development') {
+      const devMs = getDevelopmentMs(lastPlay);
+      const devStart = PRE_SNAP_MS + SNAP_MS;
+      const elapsed = performance.now() - animStartRef.current;
+      const t = Math.min(Math.max((elapsed - devStart) / devMs, 0), 1);
 
-    // Calculate phase progress
-    const phases = ['huddle', 'break', 'set', 'motion', 'snap', 'development', 'result', 'whistle', 'reset'] as const;
-    let phaseProgress = 0;
-    let phaseStart = 0;
-    for (const p of phases) {
-      const dur = timings[p];
-      if (dur === 0) continue;
-      if (p === phase) {
-        phaseProgress = Math.min((elapsed - phaseStart) / dur, 1);
-        break;
+      const frame = computeDevelopment(t, ctx, snapOffRef.current, snapDefRef.current);
+
+      // Position ball from choreographer
+      const ballWorld = fieldPctToWorld(frame.ball.x, frame.ball.y);
+      group.position.x = ballWorld.x;
+      group.position.y = Math.max(0.2, frame.ball.height);
+      group.position.z = ballWorld.z;
+
+      // Rotation based on ball state
+      if (frame.ball.spin > 0) {
+        group.rotation.z += frame.ball.spin * 0.02;
+        // Tilt toward target on passes/kicks
+        group.rotation.x = frame.ball.owner.type === 'flight' ? -0.3 : 0.2;
+      } else if (frame.ball.owner.type === 'held') {
+        group.rotation.z = Math.sin(elapsed * 0.01) * 0.05;
+        group.rotation.x = 0;
+      } else {
+        group.rotation.z *= 0.95;
+        group.rotation.x *= 0.95;
       }
-      phaseStart += dur;
+      group.visible = true;
+
+    } else if (phase === 'pre_snap' || phase === 'snap') {
+      // Ball at center/holder position
+      if (snapOffRef.current.length > 0) {
+        const centerIdx = snapOffRef.current.findIndex(p => p.role === 'C' || p.role === 'LS' || p.role === 'H');
+        const holder = snapOffRef.current[centerIdx >= 0 ? centerIdx : 0];
+        const world = fieldPctToWorld(holder.x, holder.y);
+        group.position.set(world.x, 0.4, world.z);
+        group.rotation.set(0, 0, 0);
+      }
+      group.visible = true;
+
+    } else if (phase === 'result' || phase === 'post_play') {
+      // Freeze at end of development
+      if (snapOffRef.current.length > 0) {
+        const frame = computeDevelopment(1, ctx, snapOffRef.current, snapDefRef.current);
+        const ballWorld = fieldPctToWorld(frame.ball.x, frame.ball.y);
+        group.position.x = ballWorld.x;
+        group.position.y = Math.max(0.2, frame.ball.height);
+        group.position.z = ballWorld.z;
+        group.rotation.z *= 0.9;
+        group.rotation.x *= 0.9;
+      }
+      group.visible = true;
     }
-
-    // Get choreography frame
-    const frame = computeFrame(
-      phase,
-      Math.max(0, Math.min(1, phaseProgress)),
-      ctx,
-      snapOffRef.current.length > 0 ? snapOffRef.current : getIdleDefaults(losX, offDir, 'offense'),
-      snapDefRef.current.length > 0 ? snapDefRef.current : getIdleDefaults(losX, offDir, 'defense'),
-    );
-
-    // Position ball from choreographer
-    const ballWorld = fieldPctToWorld(frame.ball.x, frame.ball.y);
-    group.position.x = ballWorld.x;
-    group.position.y = Math.max(0.2, frame.ball.height);
-    group.position.z = ballWorld.z;
-
-    // Rotation based on ball state
-    if (frame.ball.spinRate > 0) {
-      // Spiral rotation for passes and kicks
-      group.rotation.z += frame.ball.spinRate * 0.02;
-      group.rotation.x = frame.ball.tilt;
-    } else if (frame.ball.owner.type === 'held') {
-      // Held: gentle bob for running, minimal for standing
-      group.rotation.z = Math.sin(elapsed * 0.01) * 0.05;
-      group.rotation.x = 0;
-    } else if (frame.ball.owner.type === 'ground') {
-      // On ground: dampen rotation
-      group.rotation.z *= 0.95;
-      group.rotation.x *= 0.95;
-    }
-
-    group.visible = true;
   });
 
   return (
@@ -159,13 +149,4 @@ export function Football3D({
       ))}
     </group>
   );
-}
-
-function getIdleDefaults(losX: number, offDir: number, side: 'offense' | 'defense'): EntityState[] {
-  const idle = getIdlePositions(losX, offDir, side);
-  return idle.map(p => ({
-    x: p.x, y: p.y, height: 0, role: p.role,
-    facing: side === 'offense' ? -offDir * Math.PI / 2 : offDir * Math.PI / 2,
-    animState: 'idle' as const,
-  }));
 }

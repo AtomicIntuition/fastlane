@@ -9,11 +9,12 @@ import { PlayCallOverlay } from '../field/play-call-overlay';
 import { CrowdAtmosphere } from '../field/crowd-atmosphere';
 import { FieldCommentaryOverlay } from '../field/field-commentary-overlay';
 import { KickoffIntroOverlay } from '../field/kickoff-intro-overlay';
-import { Minimap } from '../field/minimap';
 import type { Phase } from '@/lib/animation/types';
-import { getPhaseTimings, getTotalPhaseDuration } from '@/lib/animation/choreographer';
+import {
+  PRE_SNAP_MS, SNAP_MS, RESULT_MS, POST_PLAY_MS,
+  getDevelopmentMs,
+} from '@/lib/animation/choreographer';
 
-// Dynamically import Canvas scene to avoid SSR issues with Three.js
 const FieldScene = dynamic(() => import('./field-scene').then(m => ({ default: m.FieldScene })), {
   ssr: false,
   loading: () => (
@@ -43,35 +44,15 @@ interface FieldVisualProps {
   weather?: WeatherConditions | null;
 }
 
-/**
- * 3D Field Visual — orchestrator component.
- * Renders the Three.js Canvas scene with all 3D elements,
- * plus HTML overlays positioned absolutely over the canvas.
- * Uses the choreographer-driven phase system for broadcast-quality animation.
- */
 export function FieldVisual3D({
-  ballPosition,
-  firstDownLine,
-  possession,
-  homeTeam,
-  awayTeam,
-  down,
-  yardsToGo,
-  quarter,
-  lastPlay,
-  isKickoff,
-  isPatAttempt,
-  gameStatus,
-  driveStartPosition,
-  narrativeContext,
-  commentary,
-  weather,
+  ballPosition, firstDownLine, possession,
+  homeTeam, awayTeam, down, yardsToGo, quarter,
+  lastPlay, isKickoff, isPatAttempt, gameStatus,
+  driveStartPosition, narrativeContext, commentary, weather,
 }: FieldVisualProps) {
   // ── Coordinate conversion ──────────────────────────────────
-
-  const toAbsolutePercent = (pos: number, team: 'home' | 'away'): number => {
-    return team === 'home' ? 100 - pos : pos;
-  };
+  const toAbsolutePercent = (pos: number, team: 'home' | 'away'): number =>
+    team === 'home' ? 100 - pos : pos;
 
   let absoluteBallPct = toAbsolutePercent(ballPosition, possession);
   if (lastPlay?.isTouchdown && lastPlay?.scoring) {
@@ -95,7 +76,6 @@ export function FieldVisual3D({
   const driveStartLeft = fieldStart + (absoluteDriveStartPct / 100) * fieldWidth;
 
   // ── Play tracking ──────────────────────────────────────────
-
   const [playKey, setPlayKey] = useState(0);
   const [celebKey, setCelebKey] = useState(0);
   const prevPlayRef = useRef<PlayResult | null>(null);
@@ -103,75 +83,44 @@ export function FieldVisual3D({
   const [playPhase, setPlayPhase] = useState<Phase>('idle');
   const [isPlayAnimating, setIsPlayAnimating] = useState(false);
 
-  useEffect(() => {
-    setPrevBallLeft(ballLeft);
-  }, [ballLeft]);
+  useEffect(() => { setPrevBallLeft(ballLeft); }, [ballLeft]);
 
-  // Detect new play
   useEffect(() => {
     if (!lastPlay || lastPlay === prevPlayRef.current) return;
     prevPlayRef.current = lastPlay;
-    setPlayKey((k) => k + 1);
-
+    setPlayKey(k => k + 1);
     if (lastPlay.isTouchdown || lastPlay.turnover || lastPlay.isSafety ||
         (lastPlay.type === 'field_goal' && lastPlay.scoring)) {
-      setCelebKey((k) => k + 1);
+      setCelebKey(k => k + 1);
     }
   }, [lastPlay]);
 
-  // ── Phase state machine (choreographer-driven) ─────────────
-
+  // ── Simple phase state machine ─────────────────────────────
   useEffect(() => {
     if (!lastPlay || playKey === 0) return;
-
     if (lastPlay.type === 'pregame' || lastPlay.type === 'coin_toss') return;
 
-    const timings = getPhaseTimings(lastPlay);
-    const allPhases: { phase: Phase; duration: number }[] = [
-      { phase: 'huddle' as Phase, duration: timings.huddle },
-      { phase: 'break' as Phase, duration: timings.break },
-      { phase: 'set' as Phase, duration: timings.set },
-      { phase: 'motion' as Phase, duration: timings.motion },
-      { phase: 'snap' as Phase, duration: timings.snap },
-      { phase: 'development' as Phase, duration: timings.development },
-      { phase: 'result' as Phase, duration: timings.result },
-      { phase: 'whistle' as Phase, duration: timings.whistle },
-      { phase: 'reset' as Phase, duration: timings.reset },
-    ];
-    const phases = allPhases.filter(p => p.duration > 0);
-
+    const devMs = getDevelopmentMs(lastPlay);
     setIsPlayAnimating(true);
+    setPlayPhase('pre_snap');
 
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-    let elapsed = 0;
-
-    // Set first phase immediately
-    if (phases.length > 0) {
-      setPlayPhase(phases[0].phase);
-    }
-
-    // Schedule phase transitions
-    for (let i = 1; i < phases.length; i++) {
-      elapsed += phases[i - 1].duration;
-      const phase = phases[i].phase;
-      timeouts.push(setTimeout(() => setPlayPhase(phase), elapsed));
-    }
-
-    // Final: return to idle
-    elapsed += phases[phases.length - 1].duration;
-    timeouts.push(setTimeout(() => {
+    const t1 = setTimeout(() => setPlayPhase('snap'), PRE_SNAP_MS);
+    const t2 = setTimeout(() => setPlayPhase('development'), PRE_SNAP_MS + SNAP_MS);
+    const t3 = setTimeout(() => setPlayPhase('result'), PRE_SNAP_MS + SNAP_MS + devMs);
+    const t4 = setTimeout(() => setPlayPhase('post_play'), PRE_SNAP_MS + SNAP_MS + devMs + RESULT_MS);
+    const t5 = setTimeout(() => {
       setPlayPhase('idle');
       setIsPlayAnimating(false);
-    }, elapsed));
+    }, PRE_SNAP_MS + SNAP_MS + devMs + RESULT_MS + POST_PLAY_MS);
 
     return () => {
-      timeouts.forEach(clearTimeout);
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(t3);
+      clearTimeout(t4); clearTimeout(t5);
       setIsPlayAnimating(false);
     };
   }, [playKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Celebration type ──────────────────────────────────────
-
   const celebType = useMemo(() => {
     if (!lastPlay) return null;
     if (lastPlay.isTouchdown) return 'touchdown' as const;
@@ -181,8 +130,7 @@ export function FieldVisual3D({
     return null;
   }, [lastPlay]);
 
-  // ── Coin flip state ───────────────────────────────────────
-
+  // ── Coin flip ─────────────────────────────────────────────
   const [showCoinFlip, setShowCoinFlip] = useState(false);
   const coinFlipShownRef = useRef(false);
   const [showKickoffIntro, setShowKickoffIntro] = useState(false);
@@ -207,8 +155,6 @@ export function FieldVisual3D({
     setShowKickoffIntro(false);
   }, []);
 
-  // ── Possessing team data ──────────────────────────────────
-
   const possessingTeam = possession === 'home' ? homeTeam : awayTeam;
   const opposingTeam = possession === 'home' ? awayTeam : homeTeam;
   const showDriveTrail = !isKickoff && !isPatAttempt && gameStatus === 'live';
@@ -218,11 +164,8 @@ export function FieldVisual3D({
       <div
         className="field-container relative w-full h-full rounded-xl overflow-hidden border border-white/10"
         role="img"
-        aria-label={`Football field. Ball at the ${ballPosition} yard line. ${down}${
-          down === 1 ? 'st' : down === 2 ? 'nd' : down === 3 ? 'rd' : 'th'
-        } and ${yardsToGo}.`}
+        aria-label={`Football field. Ball at ${ballPosition}. ${down}${down === 1 ? 'st' : down === 2 ? 'nd' : down === 3 ? 'rd' : 'th'} and ${yardsToGo}.`}
       >
-        {/* Three.js Canvas scene */}
         <FieldScene
           ballLeft={ballLeft}
           prevBallLeft={prevBallLeft}
@@ -242,42 +185,17 @@ export function FieldVisual3D({
           weather={weather ?? null}
         />
 
-        {/* HTML Overlays (positioned over canvas) */}
         <PlayCallOverlay
           formation={lastPlay?.formation ?? null}
           defensiveCall={lastPlay?.defensiveCall ?? null}
           playCall={lastPlay?.call ?? null}
-          visible={playPhase === 'set' || playPhase === 'motion'}
+          visible={playPhase === 'pre_snap'}
         />
-
-        <CrowdAtmosphere
-          crowdReaction={commentary?.crowdReaction ?? null}
-          excitement={commentary?.excitement ?? 0}
-        />
-
-        <FieldCommentaryOverlay
-          text={commentary?.playByPlay ?? null}
-          lastPlay={lastPlay}
-        />
-
-        <CoinFlip
-          show={showCoinFlip}
-          winningTeam={possession === 'home' ? awayTeam.abbreviation : homeTeam.abbreviation}
-          onComplete={handleCoinFlipComplete}
-        />
-
-        <KickoffIntroOverlay
-          show={showKickoffIntro}
-          awayTeam={awayTeam}
-          homeTeam={homeTeam}
-          onComplete={handleKickoffIntroComplete}
-        />
-
-        <CelebrationOverlay
-          type={celebType}
-          teamColor={possessingTeam.primaryColor}
-          celebKey={celebKey}
-        />
+        <CrowdAtmosphere crowdReaction={commentary?.crowdReaction ?? null} excitement={commentary?.excitement ?? 0} />
+        <FieldCommentaryOverlay text={commentary?.playByPlay ?? null} lastPlay={lastPlay} />
+        <CoinFlip show={showCoinFlip} winningTeam={possession === 'home' ? awayTeam.abbreviation : homeTeam.abbreviation} onComplete={handleCoinFlipComplete} />
+        <KickoffIntroOverlay show={showKickoffIntro} awayTeam={awayTeam} homeTeam={homeTeam} onComplete={handleKickoffIntroComplete} />
+        <CelebrationOverlay type={celebType} teamColor={possessingTeam.primaryColor} celebKey={celebKey} />
       </div>
     </div>
   );
