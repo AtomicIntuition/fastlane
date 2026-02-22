@@ -33,10 +33,6 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
           <rect x="0" y="0" width="50" height="534" fill="#2a5524" />
           <rect x="50" y="0" width="50" height="534" fill="#336b2e" />
         </pattern>
-        {/* Scanline overlay pattern — LED display signature */}
-        <pattern id="scanlines" patternUnits="userSpaceOnUse" width="1200" height="8">
-          <rect x="0" y="0" width="1200" height="2" fill="rgba(0,0,0,0.06)" />
-        </pattern>
         {/* Glow filter for yard lines */}
         <filter id="line-glow" x="-50%" y="-50%" width="200%" height="200%">
           <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
@@ -54,14 +50,6 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
             <feMergeNode in="SourceGraphic" />
           </feMerge>
         </filter>
-        {/* Neon border glow */}
-        <filter id="border-glow" x="-2%" y="-2%" width="104%" height="104%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
         {/* End zone inner glow */}
         <linearGradient id="ez-glow-left" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="rgba(255,255,255,0.08)" />
@@ -71,17 +59,6 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
           <stop offset="0%" stopColor="rgba(255,255,255,0.08)" />
           <stop offset="100%" stopColor="rgba(255,255,255,0)" />
         </linearGradient>
-        {/* Inner shadow for field border */}
-        <filter id="field-inner-shadow">
-          <feFlood floodColor="rgba(0,0,0,0.3)" />
-          <feComposite in2="SourceAlpha" operator="in" />
-          <feGaussianBlur stdDeviation="8" />
-          <feComposite in2="SourceAlpha" operator="arithmetic" k2={-1} k3={1} />
-          <feMerge>
-            <feMergeNode />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
       </defs>
 
       {/* Background grass with stripe pattern */}
@@ -312,32 +289,6 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         </g>
       )}
 
-      {/* Scanline overlay — LED display signature */}
-      <rect x="0" y="0" width="1200" height="534" fill="url(#scanlines)" />
-
-      {/* Glowing gold/neon field border */}
-      <rect
-        x="1"
-        y="1"
-        width="1198"
-        height="532"
-        fill="none"
-        stroke="rgba(212, 175, 55, 0.35)"
-        strokeWidth="2"
-        filter="url(#border-glow)"
-      />
-
-      {/* Field border inner shadow */}
-      <rect
-        x="0"
-        y="0"
-        width="1200"
-        height="534"
-        fill="none"
-        stroke="rgba(0,0,0,0.3)"
-        strokeWidth="3"
-        filter="url(#field-inner-shadow)"
-      />
     </svg>
   );
 }

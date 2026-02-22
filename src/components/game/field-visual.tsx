@@ -3,7 +3,12 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { PlayResult, NarrativeSnapshot } from '@/lib/simulation/types';
 import { FieldSurface } from './field/field-surface';
-import { LedGrid } from './field/led-grid';
+import { DriveTrail } from './field/drive-trail';
+import { BallMarker } from './field/ball-marker';
+import { DownDistanceOverlay } from './field/down-distance-overlay';
+import { SnakeTrail } from './field/snake-trail';
+import { PlayersOverlay } from './field/players-overlay';
+import { PlayScene } from './field/play-scene';
 import { CoinFlip } from './field/coin-flip';
 import { CelebrationOverlay } from './field/celebration-overlay';
 import { PlayerHighlight } from './field/player-highlight';
@@ -47,14 +52,34 @@ export function FieldVisual({
   driveStartPosition,
   commentary,
 }: FieldVisualProps) {
-  // ── Play tracking for animations ──────────────────────
+  // ── Ball position math ──────────────────────────────────
+  const endZoneWidth = 8.33;
+  const fieldWidth = 100 - endZoneWidth * 2;
+  const absoluteBallPct = possession === 'home' ? 100 - ballPosition : ballPosition;
+  const ballLeft = endZoneWidth + (absoluteBallPct / 100) * fieldWidth;
 
+  // Previous ball position — derived from current + yardsGained (avoids timing issues)
+  const prevBallLeft = useMemo(() => {
+    if (!lastPlay) return ballLeft;
+    const prevYardPos = ballPosition - (possession === 'home' ? -lastPlay.yardsGained : lastPlay.yardsGained);
+    const prevAbsolute = possession === 'home' ? 100 - prevYardPos : prevYardPos;
+    return endZoneWidth + (Math.max(0, Math.min(100, prevAbsolute)) / 100) * fieldWidth;
+  }, [lastPlay, ballPosition, possession, endZoneWidth, fieldWidth, ballLeft]);
+
+  // First down line position
+  const fdAbsolute = possession === 'home' ? 100 - firstDownLine : firstDownLine;
+  const firstDownLeft = endZoneWidth + (Math.max(0, Math.min(100, fdAbsolute)) / 100) * fieldWidth;
+
+  // Drive start position
+  const dsAbsolute = possession === 'home' ? 100 - driveStartPosition : driveStartPosition;
+  const driveStartLeft = endZoneWidth + (Math.max(0, Math.min(100, dsAbsolute)) / 100) * fieldWidth;
+
+  // ── Play tracking for animations ──────────────────────
   const [playKey, setPlayKey] = useState(0);
   const [celebKey, setCelebKey] = useState(0);
   const [highlightKey, setHighlightKey] = useState(0);
   const prevPlayRef = useRef<PlayResult | null>(null);
 
-  // Detect new play
   useEffect(() => {
     if (!lastPlay || lastPlay === prevPlayRef.current) return;
     prevPlayRef.current = lastPlay;
@@ -78,7 +103,6 @@ export function FieldVisual({
   }, [lastPlay]);
 
   // ── Celebration type ──────────────────────────────────
-
   const celebType = useMemo(() => {
     if (!lastPlay) return null;
     if (lastPlay.isTouchdown) return 'touchdown' as const;
@@ -89,7 +113,6 @@ export function FieldVisual({
   }, [lastPlay]);
 
   // ── Coin flip state ───────────────────────────────────
-
   const [showCoinFlip, setShowCoinFlip] = useState(false);
   const coinFlipShownRef = useRef(false);
   const [showKickoffIntro, setShowKickoffIntro] = useState(false);
@@ -117,7 +140,6 @@ export function FieldVisual({
   }, []);
 
   // ── Player highlight data ─────────────────────────────
-
   const highlightPlayer = useMemo(() => {
     if (!lastPlay) return { name: null, number: null };
     if (lastPlay.isTouchdown) {
@@ -140,13 +162,14 @@ export function FieldVisual({
     return { name: null, number: null };
   }, [lastPlay]);
 
-  // ── Possessing team data ──────────────────────────────
-
+  // ── Team data ─────────────────────────────────────────
   const possessingTeam = possession === 'home' ? homeTeam : awayTeam;
+  const defendingTeam = possession === 'home' ? awayTeam : homeTeam;
 
-  // ── LedGrid animation state ───────────────────────────
+  // ── Animation state ───────────────────────────────────
   const [isPlayAnimating, setIsPlayAnimating] = useState(false);
   const [playPhase, setPlayPhase] = useState<Phase>('idle');
+
   const handlePlayAnimating = useCallback((animating: boolean) => {
     setIsPlayAnimating(animating);
   }, []);
@@ -171,11 +194,14 @@ export function FieldVisual({
     }
   }, [lastPlay]);
 
-  // Ball left percent for overlay positioning (approximate from position)
-  const endZoneWidth = 8.33;
-  const fieldWidth = 100 - endZoneWidth * 2;
-  const absoluteBallPct = possession === 'home' ? 100 - ballPosition : ballPosition;
-  const ballLeft = endZoneWidth + (absoluteBallPct / 100) * fieldWidth;
+  // ── Derived display state ─────────────────────────────
+  const showOverlays = playPhase === 'idle' || playPhase === 'pre_snap' || playPhase === 'post_play';
+  const isRedZone = ballPosition <= 20;
+  const isGoalLine = ballPosition <= 5;
+  const ballDirection = lastPlay
+    ? (lastPlay.yardsGained >= 0 ? (possession === 'away' ? 'right' : 'left') : (possession === 'away' ? 'left' : 'right'))
+    : null;
+  const showDriveTrail = gameStatus === 'live' && !isKickoff && !isPatAttempt;
 
   return (
     <div className="w-full h-full px-1.5 py-1">
@@ -195,29 +221,82 @@ export function FieldVisual({
           transition: 'border-color 300ms ease-out, box-shadow 300ms ease-out',
         }}
       >
-        {/* Green field background (z-0) */}
+        {/* z-0: Green field background */}
         <FieldSurface homeTeam={homeTeam} awayTeam={awayTeam} possession={possession} />
 
-        {/* LED grid overlay with player cells (z-10) */}
-        <LedGrid
-          ballPosition={ballPosition}
-          firstDownLine={firstDownLine}
+        {/* z-4: Drive trail (dashed line showing drive progress) */}
+        <DriveTrail
+          driveStartPercent={driveStartLeft}
+          ballPercent={ballLeft}
+          teamColor={possessingTeam.primaryColor}
+          visible={showDriveTrail}
+        />
+
+        {/* z-5: Ball marker (gold dot at LOS between plays) */}
+        <BallMarker
+          leftPercent={ballLeft}
+          direction={ballDirection}
+          isKicking={isKickoff}
+          hidden={isPlayAnimating}
+        />
+
+        {/* z-6: Down & distance overlay (LOS, FD line, badge) */}
+        {showOverlays && !isKickoff && !isPatAttempt && gameStatus === 'live' && (
+          <DownDistanceOverlay
+            ballLeftPercent={ballLeft}
+            firstDownLeftPercent={firstDownLeft}
+            down={down}
+            yardsToGo={yardsToGo}
+            isRedZone={isRedZone}
+            isGoalLine={isGoalLine}
+            possession={possession}
+          />
+        )}
+
+        {/* z-8: Snake trail (yard-by-yard trail behind ball carrier) */}
+        <SnakeTrail
+          phase={playPhase}
+          ballLeftPercent={ballLeft}
+          prevBallLeftPercent={prevBallLeft}
           possession={possession}
-          down={down}
-          yardsToGo={yardsToGo}
-          driveStartPosition={driveStartPosition}
-          homeTeam={homeTeam}
-          awayTeam={awayTeam}
+          offenseColor={possessingTeam.primaryColor}
+          defenseColor={defendingTeam.primaryColor}
+          lastPlay={lastPlay}
+          playKey={playKey}
+        />
+
+        {/* z-10: Players overlay (22 dots, team logos, per-play animation) */}
+        <PlayersOverlay
+          phase={playPhase}
+          ballLeftPercent={ballLeft}
+          prevBallLeftPercent={prevBallLeft}
+          possession={possession}
+          offenseColor={possessingTeam.primaryColor}
+          defenseColor={defendingTeam.primaryColor}
           lastPlay={lastPlay}
           playKey={playKey}
           isKickoff={isKickoff}
           isPatAttempt={isPatAttempt}
           gameStatus={gameStatus}
-          onPhaseChange={handlePhaseChange}
-          onAnimating={handlePlayAnimating}
+          teamAbbreviation={possessingTeam.abbreviation}
+          teamColor={possessingTeam.primaryColor}
+          opposingTeamAbbreviation={defendingTeam.abbreviation}
         />
 
-        {/* Player name highlight */}
+        {/* z-12: Play scene (football visual, phase timing driver) */}
+        <PlayScene
+          ballLeftPercent={ballLeft}
+          prevBallLeftPercent={prevBallLeft}
+          possession={possession}
+          offenseColor={possessingTeam.primaryColor}
+          defenseColor={defendingTeam.primaryColor}
+          lastPlay={lastPlay}
+          playKey={playKey}
+          onAnimating={handlePlayAnimating}
+          onPhaseChange={handlePhaseChange}
+        />
+
+        {/* z-20: Player name highlight */}
         <PlayerHighlight
           playerName={highlightPlayer.name}
           jerseyNumber={highlightPlayer.number}
@@ -226,7 +305,7 @@ export function FieldVisual({
           highlightKey={highlightKey}
         />
 
-        {/* Play call overlay */}
+        {/* z-21: Play call overlay */}
         <PlayCallOverlay
           formation={lastPlay?.formation ?? null}
           defensiveCall={lastPlay?.defensiveCall ?? null}
@@ -234,7 +313,7 @@ export function FieldVisual({
           visible={playPhase === 'pre_snap'}
         />
 
-        {/* Crowd atmosphere edge effects */}
+        {/* z-22: Crowd atmosphere edge effects */}
         <CrowdAtmosphere
           crowdReaction={commentary?.crowdReaction ?? null}
           excitement={commentary?.excitement ?? 0}

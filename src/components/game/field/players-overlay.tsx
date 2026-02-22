@@ -16,8 +16,8 @@ import {
   RESULT_MS,
   KICKOFF_PHASE_END,
   getKickoffDevMs,
-} from './play-scene';
-import type { Phase } from './play-scene';
+} from './play-timing';
+import type { Phase } from './play-timing';
 import { getTeamLogoUrl } from '@/lib/utils/team-logos';
 import { YARD_PCT, YARDS } from './yard-grid';
 
