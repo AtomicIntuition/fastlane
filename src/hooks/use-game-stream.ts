@@ -174,7 +174,10 @@ export function useGameStream(gameId: string | null): GameStreamState & {
           case 'intermission': {
             setState((prev) => ({
               ...prev,
-              status: 'intermission',
+              // Don't overwrite game_over status — the user should see the
+              // game-over summary, not the intermission screen. Store the
+              // intermission data so GameOverWithRedirect can show "Up Next".
+              status: prev.status === 'game_over' ? 'game_over' : 'intermission',
               intermissionMessage: message.message,
               intermissionCountdown: message.countdown,
               nextGameId: message.nextGameId,

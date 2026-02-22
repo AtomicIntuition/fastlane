@@ -1386,6 +1386,34 @@ async function estimateWeekGameTimes(
  * A 30-minute break separates the last game of one week from the first of the next.
  */
 async function projectFutureGameTimes(seasonId: string) {
+  // Compute average actual game slot from completed games in this season.
+  // This replaces the fixed ESTIMATED_GAME_SLOT_MS with real data.
+  let gameSlotMs = ESTIMATED_GAME_SLOT_MS;
+
+  const completedForAvg = await db
+    .select()
+    .from(games)
+    .where(
+      and(
+        eq(games.seasonId, seasonId),
+        eq(games.status, 'completed')
+      )
+    );
+
+  const durations: number[] = [];
+  for (const g of completedForAvg) {
+    if (g.broadcastStartedAt && g.completedAt) {
+      const dur = g.completedAt.getTime() - new Date(g.broadcastStartedAt).getTime();
+      if (dur > 0 && dur < 7_200_000) { // sanity: discard > 2hr outliers
+        durations.push(dur);
+      }
+    }
+  }
+
+  if (durations.length >= 3) {
+    const avg = durations.reduce((sum, d) => sum + d, 0) / durations.length;
+    gameSlotMs = avg + INTERMISSION_MS;
+  }
 
   // Get season info
   const seasonRows = await db
@@ -1410,7 +1438,7 @@ async function projectFutureGameTimes(seasonId: string) {
   const broadcasting = allGames.find((g) => g.status === 'broadcasting');
   if (broadcasting?.broadcastStartedAt) {
     // Estimate end = broadcast start + game slot
-    anchor = new Date(broadcasting.broadcastStartedAt).getTime() + ESTIMATED_GAME_SLOT_MS;
+    anchor = new Date(broadcasting.broadcastStartedAt).getTime() + gameSlotMs;
   } else {
     // Find last completed game
     const completed = allGames
@@ -1450,7 +1478,7 @@ async function projectFutureGameTimes(seasonId: string) {
 
     const weekGames = byWeek.get(week)!;
     for (let i = 0; i < weekGames.length; i++) {
-      const scheduledAt = new Date(cursor + i * ESTIMATED_GAME_SLOT_MS);
+      const scheduledAt = new Date(cursor + i * gameSlotMs);
       await db
         .update(games)
         .set({ scheduledAt })
@@ -1458,7 +1486,7 @@ async function projectFutureGameTimes(seasonId: string) {
     }
 
     // Move cursor past the last game in this week
-    cursor += weekGames.length * ESTIMATED_GAME_SLOT_MS;
+    cursor += weekGames.length * gameSlotMs;
   }
 }
 

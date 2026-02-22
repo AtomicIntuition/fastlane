@@ -90,6 +90,7 @@ function isFourthQuarter(state: GameState): boolean {
 // ============================================================================
 
 function canKneelOutClock(state: GameState): boolean {
+  const scoreDiff = getScoreDifferential(state);
   const opponentTimeouts = state.possession === 'home'
     ? state.awayTimeouts
     : state.homeTimeouts;
@@ -101,6 +102,12 @@ function canKneelOutClock(state: GameState): boolean {
   // We get 3 kneels per set of downs (1st, 2nd, 3rd), then game over if clock runs.
   const kneelTime = 40;
   const kneelsAvailable = 3; // 1st, 2nd, 3rd down kneels before forced 4th down punt
+
+  // Large leads (17+): opponents won't waste timeouts to stop kneels, so
+  // we can kneel with up to 2 minutes left regardless of their timeouts.
+  if (scoreDiff >= 17) {
+    return state.clock <= 120;
+  }
 
   // With opponent timeouts, we need extra kneels beyond their timeouts
   // Each timeout stops the clock but we still burned ~40s on the kneel itself
@@ -480,11 +487,10 @@ export function selectPlay(
   // 3. KNEEL / SPIKE SITUATIONS
   // --------------------------------------------------------------------------
 
-  // Kneel: leading by 1-8 points, 4th quarter, < 2:00, can run out clock
+  // Kneel: leading by any amount, 4th quarter, < 2:00, can run out clock
   if (
     isFourthQuarter(state) &&
     scoreDiff >= 1 &&
-    scoreDiff <= 8 &&
     state.clock < TWO_MINUTE_WARNING &&
     canKneelOutClock(state)
   ) {
@@ -498,6 +504,27 @@ export function selectPlay(
     state.isClockRunning
   ) {
     return 'spike';
+  }
+
+  // --------------------------------------------------------------------------
+  // 3b. CLOCK-BURNING STRATEGY (small lead, Q4, < 5:00)
+  // --------------------------------------------------------------------------
+  // Teams leading 1-9 in Q4 with < 5:00 left run heavy to burn clock.
+  if (
+    isFourthQuarter(state) &&
+    scoreDiff >= 1 &&
+    scoreDiff < 10 &&
+    state.clock < 300 &&
+    state.down !== 4
+  ) {
+    const clockBurnDist: PlayDistribution = {
+      run: 0.65,
+      shortPass: 0.25,
+      mediumPass: 0.10,
+      deepPass: 0.00,
+    };
+    const dist = applyPlayStyleModifiers(clockBurnDist, team.playStyle);
+    return selectFromDistribution(dist, formation, state.yardsToGo, rng);
   }
 
   // --------------------------------------------------------------------------

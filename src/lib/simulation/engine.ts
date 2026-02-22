@@ -245,8 +245,8 @@ function calculatePlayDelay(
   let delay: number;
 
   if (clockUpdate?.isClockRunning && play.clockElapsed && play.clockElapsed > 0) {
-    // Clock is running: compress game clock for ~30 min broadcast experience
-    delay = play.clockElapsed * 400;
+    // Clock is running: 1:1 real-time (1 game second = 1 wall-clock second)
+    delay = play.clockElapsed * 1000;
   } else if (drama.isTwoMinuteDrill) {
     // Hurry-up / two-minute drill: faster play clock
     delay = REALTIME_TWO_MINUTE_PLAY_CLOCK_MS;
@@ -1193,6 +1193,12 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
     // --- (l) Generate commentary ---
     const crowdReaction = getReactionFromExcitement(excitement, playResult, state.possession);
     const commentary = buildRichCommentary(playResult, state, excitement, crowdReaction, rng);
+
+    // Annotate two-minute warning in the broadcast text
+    if (clockUpdate?.twoMinuteWarning) {
+      commentary.playByPlay = `Two-minute warning. ${commentary.playByPlay}`;
+      commentary.colorAnalysis = `We've hit the two-minute warning. ${commentary.colorAnalysis ?? ''}`.trim();
+    }
 
     // --- (m) Calculate playback timestamp ---
     const isQuarterChange = state.quarter !== prevQuarter;

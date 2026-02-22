@@ -61,7 +61,7 @@ async function getHomePageData() {
       .orderBy(desc(gameEvents.displayTimestamp))
       .limit(1);
     const gameDurationMs = lastEvent[0]?.displayTimestamp ?? 0;
-    if (broadcastDuration >= gameDurationMs + 60_000) {
+    if (broadcastDuration >= gameDurationMs + 90_000 || broadcastDuration >= 7_200_000) {
       // Broadcast is stale — skip it as liveGame so homepage falls through to intermission
       liveGame = undefined;
     }

@@ -8,6 +8,7 @@ import { useGameStream } from '@/hooks/use-game-stream';
 import { useMomentum } from '@/hooks/use-momentum';
 import { useDynamicTab } from '@/hooks/use-dynamic-tab';
 import { useProceduralAudio } from '@/hooks/use-procedural-audio';
+import { useBroadcasterAudio } from '@/hooks/use-broadcaster-audio';
 import { buildLiveBoxScore } from '@/lib/utils/live-box-score';
 import { getTeamLogoUrl } from '@/lib/utils/team-logos';
 import { ScoreBug } from '@/components/game/scorebug';
@@ -50,6 +51,13 @@ export function GameViewer({ gameId }: GameViewerProps) {
   // Procedural crowd audio
   const { isMuted, toggle: toggleAudio, triggerReaction } = useProceduralAudio();
 
+  // Broadcaster narration (Web Speech API)
+  const {
+    isMuted: isBroadcasterMuted,
+    toggle: toggleBroadcaster,
+    speak: speakPlay,
+  } = useBroadcasterAudio();
+
   // Trigger audio reactions on new events
   const prevEventNumRef = useRef<number | null>(null);
   useEffect(() => {
@@ -58,6 +66,19 @@ export function GameViewer({ gameId }: GameViewerProps) {
     prevEventNumRef.current = currentEvent.eventNumber;
     triggerReaction(currentEvent.commentary.crowdReaction, currentEvent.commentary.excitement);
   }, [currentEvent?.eventNumber]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Trigger broadcaster narration with delay to sync with play animation
+  const broadcasterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!currentEvent) return;
+    if (broadcasterTimerRef.current) clearTimeout(broadcasterTimerRef.current);
+    broadcasterTimerRef.current = setTimeout(() => {
+      speakPlay(currentEvent);
+    }, 1900);
+    return () => {
+      if (broadcasterTimerRef.current) clearTimeout(broadcasterTimerRef.current);
+    };
+  }, [currentEvent?.eventNumber, speakPlay]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Build live box score progressively from events
   const liveBoxScore = useMemo(() => buildLiveBoxScore(events), [events]);
@@ -127,6 +148,45 @@ export function GameViewer({ gameId }: GameViewerProps) {
     }
   }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Delay commentary so text appears during play development, not at pre-snap.
+  // Non-play events (kickoff, coin_toss, touchback, pregame) skip the delay.
+  const [delayedCommentary, setDelayedCommentary] = useState<{
+    playByPlay: string;
+    crowdReaction: import('@/lib/simulation/types').CrowdReaction;
+    excitement: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!currentEvent) {
+      setDelayedCommentary(null);
+      return;
+    }
+
+    const skipDelay = ['pregame', 'coin_toss', 'touchback', 'kickoff', 'kickoff_return'].includes(
+      currentEvent.playResult.type
+    );
+
+    if (skipDelay) {
+      setDelayedCommentary({
+        playByPlay: currentEvent.commentary.playByPlay,
+        crowdReaction: currentEvent.commentary.crowdReaction,
+        excitement: currentEvent.commentary.excitement,
+      });
+      return;
+    }
+
+    // Clear immediately, then reveal after 1900ms (during DEVELOPMENT phase)
+    setDelayedCommentary(null);
+    const timer = setTimeout(() => {
+      setDelayedCommentary({
+        playByPlay: currentEvent.commentary.playByPlay,
+        crowdReaction: currentEvent.commentary.crowdReaction,
+        excitement: currentEvent.commentary.excitement,
+      });
+    }, 1900);
+    return () => clearTimeout(timer);
+  }, [currentEvent?.eventNumber]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Detect quarter breaks: Q1→Q2 and Q3→Q4 transitions
   const [showQuarterBreak, setShowQuarterBreak] = useState(false);
   const [quarterBreakNumber, setQuarterBreakNumber] = useState<1 | 3>(1);
@@ -172,6 +232,24 @@ export function GameViewer({ gameId }: GameViewerProps) {
     );
   }
 
+  // ── Game Over state ───────────────────────────────────────
+  // Check game_over BEFORE intermission — defense-in-depth so the user
+  // always sees the game-over summary even if status slips to intermission.
+
+  if ((status === 'game_over' || (status === 'intermission' && finalScore)) && gameState) {
+    return (
+      <GameOverWithRedirect
+        gameState={gameState}
+        finalScore={finalScore}
+        boxScore={boxScore}
+        mvp={mvp}
+        nextGameId={nextGameId}
+        intermissionMessage={intermissionMessage}
+        intermissionCountdown={intermissionCountdown}
+      />
+    );
+  }
+
   // ── Intermission state ────────────────────────────────────
 
   if (status === 'intermission') {
@@ -180,19 +258,6 @@ export function GameViewer({ gameId }: GameViewerProps) {
         message={intermissionMessage}
         initialCountdown={intermissionCountdown}
         nextGameId={nextGameId}
-      />
-    );
-  }
-
-  // ── Game Over state ───────────────────────────────────────
-
-  if (status === 'game_over' && gameState) {
-    return (
-      <GameOverWithRedirect
-        gameState={gameState}
-        finalScore={finalScore}
-        boxScore={boxScore}
-        mvp={mvp}
       />
     );
   }
@@ -211,7 +276,12 @@ export function GameViewer({ gameId }: GameViewerProps) {
     <div className="min-h-dvh flex flex-col lg:h-dvh lg:overflow-hidden">
       {/* ── Top: Nav + ScoreBug (full width) ── */}
       <div className="flex-shrink-0">
-        <GameNav isMuted={isMuted} onToggleAudio={toggleAudio} />
+        <GameNav
+          isMuted={isMuted}
+          onToggleAudio={toggleAudio}
+          isBroadcasterMuted={isBroadcasterMuted}
+          onToggleBroadcaster={toggleBroadcaster}
+        />
         <ScoreBug
           gameState={gameState}
           status={status === 'game_over' ? 'game_over' : 'live'}
@@ -266,11 +336,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
               gameStatus={status === 'game_over' ? 'game_over' : gameState.isHalftime ? 'halftime' : 'live'}
               driveStartPosition={driveStartPosition}
               narrativeContext={currentEvent?.narrativeContext ?? null}
-              commentary={currentEvent ? {
-                playByPlay: currentEvent.commentary.playByPlay,
-                crowdReaction: currentEvent.commentary.crowdReaction,
-                excitement: currentEvent.commentary.excitement,
-              } : null}
+              commentary={delayedCommentary}
             />
           </div>
 
@@ -379,7 +445,17 @@ export function GameViewer({ gameId }: GameViewerProps) {
 
 // ── Game Navigation Bar ──────────────────────────────────────
 
-function GameNav({ isMuted, onToggleAudio }: { isMuted?: boolean; onToggleAudio?: () => void }) {
+function GameNav({
+  isMuted,
+  onToggleAudio,
+  isBroadcasterMuted,
+  onToggleBroadcaster,
+}: {
+  isMuted?: boolean;
+  onToggleAudio?: () => void;
+  isBroadcasterMuted?: boolean;
+  onToggleBroadcaster?: () => void;
+}) {
   return (
     <div className="flex items-center justify-between px-4 py-2 scorebug-glass border-b border-white/[0.06] flex-shrink-0">
       <Link
@@ -392,6 +468,34 @@ function GameNav({ isMuted, onToggleAudio }: { isMuted?: boolean; onToggleAudio?
         <span className="text-[10px] font-bold text-text-muted tracking-wider uppercase">
           Live Broadcast
         </span>
+        {onToggleBroadcaster && (
+          <button
+            onClick={onToggleBroadcaster}
+            className="w-7 h-7 rounded-md flex items-center justify-center transition-all duration-200"
+            style={{
+              background: isBroadcasterMuted ? 'rgba(17, 24, 39, 0.7)' : 'rgba(212, 175, 55, 0.15)',
+              border: isBroadcasterMuted ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(212, 175, 55, 0.3)',
+            }}
+            title={isBroadcasterMuted ? 'Enable broadcaster narration' : 'Disable broadcaster narration'}
+            aria-label={isBroadcasterMuted ? 'Enable broadcaster narration' : 'Disable broadcaster narration'}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={isBroadcasterMuted ? '#64748b' : '#d4af37'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {isBroadcasterMuted ? (
+                <>
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </>
+              ) : (
+                <>
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                  <line x1="12" y1="19" x2="12" y2="23" />
+                  <line x1="8" y1="23" x2="16" y2="23" />
+                </>
+              )}
+            </svg>
+          </button>
+        )}
         {onToggleAudio && (
           <button
             onClick={onToggleAudio}
@@ -1036,11 +1140,17 @@ function GameOverWithRedirect({
   finalScore,
   boxScore: gameOverBoxScore,
   mvp: gameOverMvp,
+  nextGameId: upNextGameId,
+  intermissionMessage: upNextMessage,
+  intermissionCountdown: upNextCountdown,
 }: {
   gameState: import('@/lib/simulation/types').GameState;
   finalScore: { home: number; away: number } | null;
   boxScore: import('@/lib/simulation/types').BoxScore | null;
   mvp: import('@/lib/simulation/types').PlayerGameStats | null;
+  nextGameId?: string | null;
+  intermissionMessage?: string | null;
+  intermissionCountdown?: number;
 }) {
   const router = useRouter();
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
@@ -1099,6 +1209,14 @@ function GameOverWithRedirect({
     return () => clearTimeout(timer);
   }, [redirectCountdown, router]);
 
+  // Parse team abbreviations from "Up next: SF @ ARI" style message
+  const upNextMatchup = useMemo(() => {
+    if (!upNextMessage) return null;
+    const match = upNextMessage.match(/Up next:\s*(\w+)\s*@\s*(\w+)/i);
+    if (!match) return null;
+    return { away: match[1], home: match[2] };
+  }, [upNextMessage]);
+
   return (
     <div className="min-h-dvh">
       <GameNav />
@@ -1110,6 +1228,34 @@ function GameOverWithRedirect({
         mvp={gameOverMvp}
         nextGameCountdown={0}
       />
+
+      {/* Up Next section when intermission data is available */}
+      {upNextGameId && upNextMatchup && (
+        <div className="max-w-2xl mx-auto px-4 pb-8">
+          <Link href={`/game/${upNextGameId}`}>
+            <div className="glass-card rounded-xl p-4 text-center hover:border-gold/30 transition-colors cursor-pointer">
+              <span className="text-[9px] font-black tracking-widest uppercase text-gold">UP NEXT</span>
+              <div className="flex items-center justify-center gap-4 mt-2">
+                <div className="flex items-center gap-2">
+                  <img src={getTeamLogoUrl(upNextMatchup.away)} alt={upNextMatchup.away} className="w-8 h-8 object-contain" />
+                  <span className="text-sm font-bold">{upNextMatchup.away}</span>
+                </div>
+                <span className="text-xs text-text-muted font-bold">@</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">{upNextMatchup.home}</span>
+                  <img src={getTeamLogoUrl(upNextMatchup.home)} alt={upNextMatchup.home} className="w-8 h-8 object-contain" />
+                </div>
+              </div>
+              {upNextCountdown != null && upNextCountdown > 0 && (
+                <p className="text-xs text-text-muted mt-2">
+                  Kickoff in {Math.floor(upNextCountdown / 60)}:{(upNextCountdown % 60).toString().padStart(2, '0')}
+                </p>
+              )}
+            </div>
+          </Link>
+        </div>
+      )}
+
       {redirectCountdown !== null && redirectCountdown > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
           <div className="glass-card rounded-full px-5 py-2 text-sm text-text-secondary font-medium">

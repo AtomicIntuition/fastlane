@@ -536,38 +536,39 @@ export const PLAY_DELAY_BETWEEN_QUARTERS = 8000;
 export const PLAY_DELAY_HALFTIME = 15000;
 
 // ============================================================================
-// REAL-TIME GAME PACING (for authentic ~60-80 minute broadcast)
+// REAL-TIME GAME PACING (1:1 real-time — full 15-minute quarters)
 // ============================================================================
-// These control SSE delays that map to actual game-time consumption,
-// producing an authentic broadcast experience instead of a 5-minute highlight reel.
+// These control SSE delays that produce a true-to-life broadcast. Game clock
+// seconds map 1:1 to wall-clock seconds so each quarter is a real 15 minutes.
+// Total game length: ~60-70 minutes depending on stoppages.
 // ============================================================================
 
-/** Real-time delay when the clock is stopped (huddle + lineup time) */
-export const REALTIME_PLAY_CLOCK_DELAY_MS = 8_000;
+/** Real-time delay when the clock is stopped (huddle + lineup time, ~20s like real NFL) */
+export const REALTIME_PLAY_CLOCK_DELAY_MS = 20_000;
 
-/** Faster play clock during two-minute drill / hurry-up */
-export const REALTIME_TWO_MINUTE_PLAY_CLOCK_MS = 5_000;
+/** Faster play clock during two-minute drill / hurry-up (~8s snap-to-snap) */
+export const REALTIME_TWO_MINUTE_PLAY_CLOCK_MS = 8_000;
 
 /** Pause between quarters (Q1→Q2, Q3→Q4) */
-export const REALTIME_QUARTER_BREAK_MS = 15_000;
+export const REALTIME_QUARTER_BREAK_MS = 45_000;
 
 /** Halftime break */
-export const REALTIME_HALFTIME_MS = 45_000;
+export const REALTIME_HALFTIME_MS = 90_000;
 
 /** Pause for the two-minute warning */
-export const REALTIME_TWO_MINUTE_WARNING_MS = 8_000;
+export const REALTIME_TWO_MINUTE_WARNING_MS = 10_000;
 
 /** Extra celebration pause after a touchdown */
-export const REALTIME_TOUCHDOWN_BONUS_MS = 6_000;
+export const REALTIME_TOUCHDOWN_BONUS_MS = 8_000;
 
 /** Dramatic pause after a turnover */
-export const REALTIME_TURNOVER_BONUS_MS = 4_000;
+export const REALTIME_TURNOVER_BONUS_MS = 5_000;
 
-/** Estimated total game duration including all delays (~30 min) */
-export const ESTIMATED_GAME_DURATION_MS = 30 * 60 * 1000;
+/** Estimated total game duration including all delays (~65 min) */
+export const ESTIMATED_GAME_DURATION_MS = 65 * 60 * 1000;
 
-/** Estimated game slot including post-game intermission (~45 min) */
-export const ESTIMATED_GAME_SLOT_MS = 45 * 60 * 1000;
+/** Estimated game slot including post-game intermission (~80 min) */
+export const ESTIMATED_GAME_SLOT_MS = 80 * 60 * 1000;
 
 // ============================================================================
 // SCORING DISTRIBUTION TARGETS (for validation / regression testing)
