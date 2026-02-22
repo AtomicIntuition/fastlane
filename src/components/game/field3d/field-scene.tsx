@@ -13,6 +13,7 @@ import { FieldLines3D } from './field-lines-3d';
 import { DriveTrail3D } from './drive-trail-3d';
 import { BallMarker3D } from './ball-marker-3d';
 import { WeatherEffects } from './weather-effects';
+import { Stadium } from './stadium';
 
 interface FieldSceneProps {
   ballLeft: number;
@@ -57,7 +58,8 @@ export function FieldScene({
 }: FieldSceneProps) {
   // Convert ball position to world X for camera
   const ballWorldX = (ballLeft / 100) * 120 - 60;
-  const offenseDirection = possession === 'away' ? -1 : 1;
+  // Home scores toward worldX -60 (absolutePct 0), away scores toward worldX +60 (absolutePct 100)
+  const offenseDirection = possession === 'away' ? 1 : -1;
   const isWidePlay = lastPlay?.type === 'kickoff' || lastPlay?.type === 'punt';
 
   const possessingTeam = possession === 'home' ? homeTeam : awayTeam;
@@ -71,11 +73,11 @@ export function FieldScene({
       frameloop={isPlayAnimating ? 'always' : 'demand'}
       dpr={[1, 1.5]}
       gl={{ antialias: true, alpha: false }}
-      camera={{ fov: 50, near: 0.1, far: 500, position: [ballWorldX - 20, 22, 0] }}
+      camera={{ fov: 50, near: 0.1, far: 600, position: [ballWorldX - 20, 22, 0] }}
       style={{ width: '100%', height: '100%', background: '#0a1a0a' }}
     >
-      {/* Fog for depth (adjusted by weather) */}
-      <fog attach="fog" args={['#0a1a0a', fogNear, fogFar]} />
+      {/* Fog for depth (adjusted by weather) — pushed further for stadium visibility */}
+      <fog attach="fog" args={['#0a1a0a', fogNear + 30, fogFar + 60]} />
 
       {/* Lighting (weather-responsive) */}
       <StadiumLighting weather={weather} />
@@ -94,6 +96,9 @@ export function FieldScene({
 
       {/* Goal posts */}
       <GoalPosts />
+
+      {/* Stadium bowl with stands, fans, press box */}
+      <Stadium homeColor={homeTeam.primaryColor} awayColor={awayTeam.primaryColor} />
 
       {/* Field markers (LOS + first down) */}
       <FieldLines3D
