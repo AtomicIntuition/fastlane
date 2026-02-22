@@ -56,6 +56,8 @@ export function GameViewer({ gameId }: GameViewerProps) {
     isMuted: isBroadcasterMuted,
     toggle: toggleBroadcaster,
     speak: speakPlay,
+    voiceGender: broadcasterVoice,
+    cycleVoice: cycleBroadcasterVoice,
   } = useBroadcasterAudio();
 
   // Trigger audio reactions on new events
@@ -281,6 +283,8 @@ export function GameViewer({ gameId }: GameViewerProps) {
           onToggleAudio={toggleAudio}
           isBroadcasterMuted={isBroadcasterMuted}
           onToggleBroadcaster={toggleBroadcaster}
+          broadcasterVoice={broadcasterVoice}
+          onCycleBroadcasterVoice={cycleBroadcasterVoice}
         />
         <ScoreBug
           gameState={gameState}
@@ -450,11 +454,15 @@ function GameNav({
   onToggleAudio,
   isBroadcasterMuted,
   onToggleBroadcaster,
+  broadcasterVoice,
+  onCycleBroadcasterVoice,
 }: {
   isMuted?: boolean;
   onToggleAudio?: () => void;
   isBroadcasterMuted?: boolean;
   onToggleBroadcaster?: () => void;
+  broadcasterVoice?: 'male' | 'female';
+  onCycleBroadcasterVoice?: () => void;
 }) {
   return (
     <div className="flex items-center justify-between px-4 py-2 scorebug-glass border-b border-white/[0.06] flex-shrink-0">
@@ -494,6 +502,38 @@ function GameNav({
                 </>
               )}
             </svg>
+          </button>
+        )}
+        {onCycleBroadcasterVoice && !isBroadcasterMuted && (
+          <button
+            onClick={onCycleBroadcasterVoice}
+            className="h-7 px-1.5 rounded-md flex items-center justify-center gap-1 transition-all duration-200"
+            style={{
+              background: 'rgba(212, 175, 55, 0.10)',
+              border: '1px solid rgba(212, 175, 55, 0.25)',
+            }}
+            title={`Switch to ${broadcasterVoice === 'male' ? 'female' : 'male'} broadcaster`}
+            aria-label={`Switch to ${broadcasterVoice === 'male' ? 'female' : 'male'} broadcaster`}
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#d4af37" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {broadcasterVoice === 'male' ? (
+                <>
+                  {/* Male silhouette */}
+                  <circle cx="12" cy="7" r="4" />
+                  <path d="M5.5 21a6.5 6.5 0 0 1 13 0" />
+                </>
+              ) : (
+                <>
+                  {/* Female silhouette */}
+                  <circle cx="12" cy="7" r="4" />
+                  <path d="M5.5 21a6.5 6.5 0 0 1 13 0" />
+                  <path d="M8 7c0-3 1.5-5 4-5s4 2 4 5" />
+                </>
+              )}
+            </svg>
+            <span className="text-[9px] font-bold text-gold uppercase tracking-wide">
+              {broadcasterVoice === 'male' ? 'M' : 'F'}
+            </span>
           </button>
         )}
         {onToggleAudio && (

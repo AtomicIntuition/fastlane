@@ -3,38 +3,71 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { GameEvent } from '@/lib/simulation/types';
 
+export type BroadcasterVoice = 'male' | 'female';
+
+/** Patterns to match male English voices across browsers/OS */
+const MALE_PATTERN = /male|daniel|james|david|google us|aaron|fred|ralph|tom/i;
+/** Patterns to match female English voices across browsers/OS */
+const FEMALE_PATTERN = /female|samantha|karen|kate|victoria|zira|google uk english female|fiona|moira|tessa|allison/i;
+
+/**
+ * Pick the best English voice matching the requested gender.
+ * Falls back to any English voice if no gender-specific match found.
+ */
+function pickVoiceForGender(
+  voices: SpeechSynthesisVoice[],
+  gender: BroadcasterVoice,
+): SpeechSynthesisVoice | null {
+  const english = voices.filter((v) => v.lang.startsWith('en'));
+  const pattern = gender === 'male' ? MALE_PATTERN : FEMALE_PATTERN;
+
+  return (
+    english.find((v) => pattern.test(v.name)) ??
+    english[0] ??
+    null
+  );
+}
+
 /**
  * Web Speech API broadcaster narration.
  * Speaks every play except pregame/coin_toss events.
  * Cancels previous utterance before speaking a new one.
+ * Supports switching between male and female broadcaster voices.
  */
 export function useBroadcasterAudio() {
   const [isMuted, setIsMuted] = useState(true); // default off
+  const [voiceGender, setVoiceGender] = useState<BroadcasterVoice>('male');
   const lastSpokenRef = useRef<number | null>(null);
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  const voicesLoadedRef = useRef<SpeechSynthesisVoice[]>([]);
 
   // Initialize synth + pick a voice on mount
   useEffect(() => {
     if (typeof window === 'undefined' || !window.speechSynthesis) return;
     synthRef.current = window.speechSynthesis;
 
-    const pickVoice = () => {
-      const voices = synthRef.current?.getVoices() ?? [];
-      // Prefer an English male voice for broadcaster feel
-      const preferred = voices.find(
-        (v) => v.lang.startsWith('en') && /male|daniel|james|david|google us/i.test(v.name)
-      );
-      voiceRef.current = preferred ?? voices.find((v) => v.lang.startsWith('en')) ?? null;
+    const loadVoices = () => {
+      voicesLoadedRef.current = synthRef.current?.getVoices() ?? [];
+      voiceRef.current = pickVoiceForGender(voicesLoadedRef.current, voiceGender);
     };
 
-    pickVoice();
+    loadVoices();
     // Voices may load async in some browsers
-    window.speechSynthesis.addEventListener('voiceschanged', pickVoice);
+    window.speechSynthesis.addEventListener('voiceschanged', loadVoices);
     return () => {
-      window.speechSynthesis.removeEventListener('voiceschanged', pickVoice);
+      window.speechSynthesis.removeEventListener('voiceschanged', loadVoices);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Re-pick voice when gender changes
+  useEffect(() => {
+    if (voicesLoadedRef.current.length > 0) {
+      voiceRef.current = pickVoiceForGender(voicesLoadedRef.current, voiceGender);
+    }
+    // Cancel any ongoing speech so the next play uses the new voice
+    if (synthRef.current) synthRef.current.cancel();
+  }, [voiceGender]);
 
   const speak = useCallback(
     (event: GameEvent) => {
@@ -57,13 +90,14 @@ export function useBroadcasterAudio() {
 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = rate;
-      utterance.pitch = 0.85;
+      // Slightly different pitch profiles for each voice
+      utterance.pitch = voiceGender === 'male' ? 0.85 : 1.05;
       if (voiceRef.current) utterance.voice = voiceRef.current;
 
       synthRef.current.speak(utterance);
       lastSpokenRef.current = event.eventNumber;
     },
-    [isMuted]
+    [isMuted, voiceGender],
   );
 
   const toggle = useCallback(() => {
@@ -74,5 +108,9 @@ export function useBroadcasterAudio() {
     setIsMuted((prev) => !prev);
   }, [isMuted]);
 
-  return { isMuted, toggle, speak };
+  const cycleVoice = useCallback(() => {
+    setVoiceGender((prev) => (prev === 'male' ? 'female' : 'male'));
+  }, []);
+
+  return { isMuted, toggle, speak, voiceGender, cycleVoice };
 }
