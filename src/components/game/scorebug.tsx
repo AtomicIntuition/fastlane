@@ -202,6 +202,7 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
                 src={getTeamScoreboardLogoUrl(homeTeam.abbreviation)}
                 alt=""
                 className="w-12 h-12 flex-shrink-0 object-contain drop-shadow-lg"
+                style={{ transform: 'scaleX(-1)' }}
               />
               {possession === 'home' && (
                 <div
@@ -312,6 +313,7 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
                 src={getTeamScoreboardLogoUrl(homeTeam.abbreviation)}
                 alt=""
                 className="w-9 h-9 flex-shrink-0 object-contain drop-shadow-lg"
+                style={{ transform: 'scaleX(-1)' }}
               />
             </div>
           </div>

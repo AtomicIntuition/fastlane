@@ -129,7 +129,7 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         {homeTeam.abbreviation}
       </text>
 
-      {/* Home team logos — top and bottom of end zone (aspect-ratio preserved) */}
+      {/* Home team logos — top and bottom of end zone (flipped to face left) */}
       <image
         href={getTeamLogoUrl(homeTeam.abbreviation)}
         x="1110"
@@ -138,6 +138,7 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         height="80"
         opacity="0.5"
         preserveAspectRatio="xMidYMid meet"
+        transform="translate(2300, 0) scale(-1, 1)"
       />
       <image
         href={getTeamLogoUrl(homeTeam.abbreviation)}
@@ -147,6 +148,7 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         height="80"
         opacity="0.5"
         preserveAspectRatio="xMidYMid meet"
+        transform="translate(2300, 0) scale(-1, 1)"
       />
 
       {/* Midfield home team logo (home stadium branding) */}

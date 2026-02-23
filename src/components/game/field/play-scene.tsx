@@ -180,6 +180,9 @@ export function PlayScene({
   const activeLogo = isPostTurnover ? opposingTeamAbbreviation : teamAbbreviation;
   const activeColor = isPostTurnover ? defenseColor : teamColor;
 
+  // Home team logos face left (toward opponent) — flip when home has the ball
+  const flipLogo = (possession === 'home' && !isPostTurnover) || (possession === 'away' && isPostTurnover);
+
   // ── Determine visual effects for current play ──────────────
   const playType = lastPlay?.type ?? null;
   const isPlaying = phase !== 'idle';
@@ -274,6 +277,7 @@ export function PlayScene({
           progress={animProgress}
           logoUrl={getTeamLogoUrl(activeLogo, 100)}
           borderColor={activeColor}
+          flipLogo={flipLogo}
         />
       )}
 
@@ -346,6 +350,7 @@ export function PlayScene({
               objectFit: 'contain',
               pointerEvents: 'none',
               userSelect: 'none',
+              transform: flipLogo ? 'scaleX(-1)' : undefined,
             }}
             draggable={false}
             onError={handleLogoError}
@@ -669,9 +674,9 @@ function SpiralLines({ x }: { x: number }) {
 }
 
 function KickAltitudeGhost({
-  x, progress, logoUrl, borderColor,
+  x, progress, logoUrl, borderColor, flipLogo,
 }: {
-  x: number; progress: number; logoUrl: string; borderColor: string;
+  x: number; progress: number; logoUrl: string; borderColor: string; flipLogo?: boolean;
 }) {
   // Ghost rises up on a parabolic arc: peak at t=0.5
   const altitude = Math.sin(progress * Math.PI);
@@ -709,7 +714,7 @@ function KickAltitudeGhost({
           alt=""
           width={BALL_SIZE * 0.8 - 8}
           height={BALL_SIZE * 0.8 - 8}
-          style={{ objectFit: 'contain', opacity: 0.5 }}
+          style={{ objectFit: 'contain', opacity: 0.5, transform: flipLogo ? 'scaleX(-1)' : undefined }}
           draggable={false}
           onError={handleLogoError}
         />

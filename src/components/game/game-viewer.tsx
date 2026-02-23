@@ -44,6 +44,8 @@ export function GameViewer({ gameId }: GameViewerProps) {
     intermissionCountdown,
     nextGameId,
     reconnect,
+    pause,
+    resume,
   } = useGameStream(gameId);
 
   const { momentum } = useMomentum(events);
@@ -144,11 +146,29 @@ export function GameViewer({ gameId }: GameViewerProps) {
     if (isHalftimeNow) {
       halftimeShownRef.current = true;
       setShowHalftime(true);
-      // Auto-dismiss after 18 seconds (halftime is 20s total, leave 2s buffer)
-      const timer = setTimeout(() => setShowHalftime(false), 18_000);
-      return () => clearTimeout(timer);
+      pause(); // Pause event stream during halftime
     }
   }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Detect 2-minute warning in Q4
+  const [showTwoMinWarning, setShowTwoMinWarning] = useState(false);
+  const twoMinWarningShownRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentEvent || !gameState || twoMinWarningShownRef.current) return;
+    if (events.length < 2) return;
+
+    const prevClock = events[events.length - 2]?.gameState.clock;
+    const curClock = gameState.clock;
+    const curQuarter = gameState.quarter;
+
+    // Q4, clock just crossed 120s (2:00)
+    if (curQuarter === 4 && typeof prevClock === 'number' && prevClock > 120 && curClock <= 120) {
+      twoMinWarningShownRef.current = true;
+      setShowTwoMinWarning(true);
+      pause(); // Pause event stream during 2-minute warning
+    }
+  }, [currentEvent?.eventNumber, gameState?.quarter, gameState?.clock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Delay commentary so text appears during play development, not at pre-snap.
   // Non-play events (kickoff, coin_toss, touchback, pregame) skip the delay.
@@ -205,8 +225,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
       quarterBreaksShownRef.current.add(1);
       setQuarterBreakNumber(1);
       setShowQuarterBreak(true);
-      const timer = setTimeout(() => setShowQuarterBreak(false), 10_000);
-      return () => clearTimeout(timer);
+      pause(); // Pause event stream during quarter break
     }
 
     // Q3→Q4 transition
@@ -214,8 +233,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
       quarterBreaksShownRef.current.add(3);
       setQuarterBreakNumber(3);
       setShowQuarterBreak(true);
-      const timer = setTimeout(() => setShowQuarterBreak(false), 10_000);
-      return () => clearTimeout(timer);
+      pause(); // Pause event stream during quarter break
     }
   }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -427,7 +445,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
           awayTeam={gameState.awayTeam}
           homeScore={gameState.homeScore}
           awayScore={gameState.awayScore}
-          onDismiss={() => setShowHalftime(false)}
+          onDismiss={() => { setShowHalftime(false); resume(); }}
         />
       )}
 
@@ -440,7 +458,19 @@ export function GameViewer({ gameId }: GameViewerProps) {
           homeScore={gameState.homeScore}
           awayScore={gameState.awayScore}
           boxScore={activeBoxScore}
-          onDismiss={() => setShowQuarterBreak(false)}
+          onDismiss={() => { setShowQuarterBreak(false); resume(); }}
+        />
+      )}
+
+      {/* ── Two-minute warning overlay ── */}
+      {showTwoMinWarning && activeBoxScore && (
+        <TwoMinuteWarningOverlay
+          homeTeam={gameState.homeTeam}
+          awayTeam={gameState.awayTeam}
+          homeScore={gameState.homeScore}
+          awayScore={gameState.awayScore}
+          boxScore={activeBoxScore}
+          onDismiss={() => { setShowTwoMinWarning(false); resume(); }}
         />
       )}
     </div>
@@ -857,6 +887,13 @@ function NarrativeBar({
 
 // ── Quarter Break Overlay ────────────────────────────────────
 
+function formatBreakCountdown(seconds: number): string {
+  if (seconds <= 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 function QuarterBreakOverlay({
   quarter,
   homeTeam: home,
@@ -874,7 +911,7 @@ function QuarterBreakOverlay({
   boxScore: import('@/lib/simulation/types').BoxScore;
   onDismiss: () => void;
 }) {
-  const [countdown, setCountdown] = useState(10);
+  const [countdown, setCountdown] = useState(120);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -892,9 +929,15 @@ function QuarterBreakOverlay({
 
   const label = quarter === 1 ? '1ST' : '3RD';
 
+  // Find top performers
+  const allPlayers = [...qtrBox.homePlayerStats, ...qtrBox.awayPlayerStats];
+  const topPasser = allPlayers.filter(p => p.attempts > 0).sort((a, b) => b.passingYards - a.passingYards)[0];
+  const topRusher = allPlayers.filter(p => p.carries > 0).sort((a, b) => b.rushingYards - a.rushingYards)[0];
+  const topReceiver = allPlayers.filter(p => p.receptions > 0).sort((a, b) => b.receivingYards - a.receivingYards)[0];
+
   return (
-    <div className="px-3 py-3 border-b border-white/10 bg-gradient-to-b from-surface-elevated/95 to-surface/90 backdrop-blur-sm">
-      <div className="max-w-lg mx-auto space-y-2.5">
+    <div className="px-3 py-4 border-b border-white/10 bg-gradient-to-b from-surface-elevated/95 to-surface/90 backdrop-blur-sm">
+      <div className="max-w-lg mx-auto space-y-3">
         {/* Header */}
         <div className="flex items-center justify-between">
           <span className="text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full bg-white/5 text-text-secondary border border-white/10">
@@ -904,25 +947,31 @@ function QuarterBreakOverlay({
             onClick={onDismiss}
             className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
           >
-            Resuming in {countdown}s
+            Resuming in {formatBreakCountdown(countdown)}
           </button>
         </div>
 
-        {/* Score */}
-        <div className="flex items-center justify-center gap-4 py-0.5">
-          <div className="text-center">
-            <span className="text-xs text-text-muted">{away.abbreviation}</span>
-            <p className="text-lg font-black tabular-nums">{awayScore}</p>
+        {/* Score with team logos */}
+        <div className="flex items-center justify-center gap-6 py-1">
+          <div className="flex items-center gap-2">
+            <img src={getTeamLogoUrl(away.abbreviation)} alt="" className="w-8 h-8 object-contain" />
+            <div className="text-center">
+              <span className="text-xs text-text-muted">{away.abbreviation}</span>
+              <p className="text-xl font-black tabular-nums">{awayScore}</p>
+            </div>
           </div>
           <span className="text-xs text-text-muted font-bold">—</span>
-          <div className="text-center">
-            <span className="text-xs text-text-muted">{home.abbreviation}</span>
-            <p className="text-lg font-black tabular-nums">{homeScore}</p>
+          <div className="flex items-center gap-2">
+            <div className="text-center">
+              <span className="text-xs text-text-muted">{home.abbreviation}</span>
+              <p className="text-xl font-black tabular-nums">{homeScore}</p>
+            </div>
+            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-8 h-8 object-contain" style={{ transform: 'scaleX(-1)' }} />
           </div>
         </div>
 
         {/* Key stats */}
-        <div className="grid grid-cols-2 gap-2 text-center text-[11px]">
+        <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
           <div>
             <span className="text-text-muted block">Total Yards</span>
             <span className="font-bold">{qtrBox.awayStats.totalYards}</span>
@@ -930,10 +979,59 @@ function QuarterBreakOverlay({
             <span className="font-bold">{qtrBox.homeStats.totalYards}</span>
           </div>
           <div>
+            <span className="text-text-muted block">Passing</span>
+            <span className="font-bold">{qtrBox.awayStats.passingYards}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{qtrBox.homeStats.passingYards}</span>
+          </div>
+          <div>
+            <span className="text-text-muted block">Rushing</span>
+            <span className="font-bold">{qtrBox.awayStats.rushingYards}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{qtrBox.homeStats.rushingYards}</span>
+          </div>
+          <div>
             <span className="text-text-muted block">Turnovers</span>
             <span className="font-bold">{qtrBox.awayStats.turnovers}</span>
             <span className="text-text-muted mx-1">-</span>
             <span className="font-bold">{qtrBox.homeStats.turnovers}</span>
+          </div>
+          <div>
+            <span className="text-text-muted block">1st Downs</span>
+            <span className="font-bold">{qtrBox.awayStats.firstDowns}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{qtrBox.homeStats.firstDowns}</span>
+          </div>
+        </div>
+
+        {/* Top performers */}
+        <div className="space-y-1">
+          <span className="text-[9px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
+          <div className="grid grid-cols-1 gap-0.5 text-[11px]">
+            {topPasser && topPasser.passingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topPasser.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topPasser.completions}/{topPasser.attempts}, {topPasser.passingYards} yds{topPasser.passingTDs > 0 ? `, ${topPasser.passingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+            {topRusher && topRusher.rushingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topRusher.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topRusher.carries} car, {topRusher.rushingYards} yds{topRusher.rushingTDs > 0 ? `, ${topRusher.rushingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+            {topReceiver && topReceiver.receivingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topReceiver.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topReceiver.receptions} rec, {topReceiver.receivingYards} yds{topReceiver.receivingTDs > 0 ? `, ${topReceiver.receivingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1063,7 +1161,7 @@ function HalftimeReport({
   awayScore: number;
   onDismiss: () => void;
 }) {
-  const [countdown, setCountdown] = useState(18);
+  const [countdown, setCountdown] = useState(300);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1099,20 +1197,26 @@ function HalftimeReport({
             onClick={onDismiss}
             className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
           >
-            2nd half in {countdown}s
+            2nd half in {formatBreakCountdown(countdown)}
           </button>
         </div>
 
-        {/* Score */}
-        <div className="flex items-center justify-center gap-4 py-1">
-          <div className="text-center">
-            <span className="text-xs text-text-muted">{away.abbreviation}</span>
-            <p className="text-xl font-black tabular-nums">{awayScore}</p>
+        {/* Score with team logos */}
+        <div className="flex items-center justify-center gap-6 py-1">
+          <div className="flex items-center gap-2">
+            <img src={getTeamLogoUrl(away.abbreviation)} alt="" className="w-10 h-10 object-contain" />
+            <div className="text-center">
+              <span className="text-xs text-text-muted">{away.abbreviation}</span>
+              <p className="text-xl font-black tabular-nums">{awayScore}</p>
+            </div>
           </div>
           <span className="text-xs text-text-muted font-bold">—</span>
-          <div className="text-center">
-            <span className="text-xs text-text-muted">{home.abbreviation}</span>
-            <p className="text-xl font-black tabular-nums">{homeScore}</p>
+          <div className="flex items-center gap-2">
+            <div className="text-center">
+              <span className="text-xs text-text-muted">{home.abbreviation}</span>
+              <p className="text-xl font-black tabular-nums">{homeScore}</p>
+            </div>
+            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-10 h-10 object-contain" style={{ transform: 'scaleX(-1)' }} />
           </div>
         </div>
 
@@ -1135,6 +1239,137 @@ function HalftimeReport({
             <span className="font-bold">{halftimeBox.awayStats.firstDowns}</span>
             <span className="text-text-muted mx-1">-</span>
             <span className="font-bold">{halftimeBox.homeStats.firstDowns}</span>
+          </div>
+        </div>
+
+        {/* Top performers */}
+        <div className="space-y-1">
+          <span className="text-[9px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
+          <div className="grid grid-cols-1 gap-0.5 text-[11px]">
+            {topPasser && topPasser.passingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topPasser.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topPasser.completions}/{topPasser.attempts}, {topPasser.passingYards} yds{topPasser.passingTDs > 0 ? `, ${topPasser.passingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+            {topRusher && topRusher.rushingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topRusher.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topRusher.carries} car, {topRusher.rushingYards} yds{topRusher.rushingTDs > 0 ? `, ${topRusher.rushingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+            {topReceiver && topReceiver.receivingYards > 0 && (
+              <div className="flex justify-between">
+                <span className="text-text-secondary">{topReceiver.player.name}</span>
+                <span className="font-mono font-bold tabular-nums">
+                  {topReceiver.receptions} rec, {topReceiver.receivingYards} yds{topReceiver.receivingTDs > 0 ? `, ${topReceiver.receivingTDs} TD` : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Two-Minute Warning Overlay ────────────────────────────────
+
+function TwoMinuteWarningOverlay({
+  homeTeam: home,
+  awayTeam: away,
+  homeScore,
+  awayScore,
+  boxScore: tmwBox,
+  onDismiss,
+}: {
+  homeTeam: import('@/lib/simulation/types').Team;
+  awayTeam: import('@/lib/simulation/types').Team;
+  homeScore: number;
+  awayScore: number;
+  boxScore: import('@/lib/simulation/types').BoxScore;
+  onDismiss: () => void;
+}) {
+  const [countdown, setCountdown] = useState(120);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          onDismiss();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [onDismiss]);
+
+  // Find top performers
+  const allPlayers = [...tmwBox.homePlayerStats, ...tmwBox.awayPlayerStats];
+  const topPasser = allPlayers.filter(p => p.attempts > 0).sort((a, b) => b.passingYards - a.passingYards)[0];
+  const topRusher = allPlayers.filter(p => p.carries > 0).sort((a, b) => b.rushingYards - a.rushingYards)[0];
+  const topReceiver = allPlayers.filter(p => p.receptions > 0).sort((a, b) => b.receivingYards - a.receivingYards)[0];
+
+  return (
+    <div className="px-3 py-4 border-b border-live-red/20 bg-gradient-to-b from-live-red/5 to-transparent">
+      <div className="max-w-lg mx-auto space-y-3">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <span className="text-[9px] font-black tracking-widest uppercase px-2 py-0.5 rounded-full bg-live-red/10 text-live-red border border-live-red/20">
+            TWO-MINUTE WARNING
+          </span>
+          <button
+            onClick={onDismiss}
+            className="text-[10px] text-text-muted hover:text-text-secondary transition-colors"
+          >
+            Resuming in {formatBreakCountdown(countdown)}
+          </button>
+        </div>
+
+        {/* Score with team logos */}
+        <div className="flex items-center justify-center gap-6 py-1">
+          <div className="flex items-center gap-2">
+            <img src={getTeamLogoUrl(away.abbreviation)} alt="" className="w-8 h-8 object-contain" />
+            <div className="text-center">
+              <span className="text-xs text-text-muted">{away.abbreviation}</span>
+              <p className="text-xl font-black tabular-nums">{awayScore}</p>
+            </div>
+          </div>
+          <span className="text-xs text-text-muted font-bold">—</span>
+          <div className="flex items-center gap-2">
+            <div className="text-center">
+              <span className="text-xs text-text-muted">{home.abbreviation}</span>
+              <p className="text-xl font-black tabular-nums">{homeScore}</p>
+            </div>
+            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-8 h-8 object-contain" style={{ transform: 'scaleX(-1)' }} />
+          </div>
+        </div>
+
+        {/* Key stats */}
+        <div className="grid grid-cols-3 gap-2 text-center text-[11px]">
+          <div>
+            <span className="text-text-muted block">Total Yards</span>
+            <span className="font-bold">{tmwBox.awayStats.totalYards}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{tmwBox.homeStats.totalYards}</span>
+          </div>
+          <div>
+            <span className="text-text-muted block">Turnovers</span>
+            <span className="font-bold">{tmwBox.awayStats.turnovers}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{tmwBox.homeStats.turnovers}</span>
+          </div>
+          <div>
+            <span className="text-text-muted block">1st Downs</span>
+            <span className="font-bold">{tmwBox.awayStats.firstDowns}</span>
+            <span className="text-text-muted mx-1">-</span>
+            <span className="font-bold">{tmwBox.homeStats.firstDowns}</span>
           </div>
         </div>
 

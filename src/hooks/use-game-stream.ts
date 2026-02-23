@@ -42,6 +42,8 @@ const BASE_RECONNECT_DELAY = 1000;
 
 export function useGameStream(gameId: string | null): GameStreamState & {
   reconnect: () => void;
+  pause: () => void;
+  resume: () => void;
 } {
   const [state, setState] = useState<GameStreamState>(INITIAL_STATE);
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -51,6 +53,8 @@ export function useGameStream(gameId: string | null): GameStreamState & {
   const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCatchingUpRef = useRef(false);
   const isReconnectingRef = useRef(false);
+  const pauseRef = useRef(false);
+  const pauseQueueRef = useRef<GameEvent[]>([]);
 
   const clearTimers = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -137,7 +141,10 @@ export function useGameStream(gameId: string | null): GameStreamState & {
           }
 
           case 'play': {
-            if (isCatchingUpRef.current) {
+            if (pauseRef.current) {
+              // Paused — buffer events for later
+              pauseQueueRef.current.push(message.event);
+            } else if (isCatchingUpRef.current) {
               // Still catching up -- queue this play
               playbackQueueRef.current.push(message.event);
             } else if (playbackQueueRef.current.length > 0) {
@@ -255,6 +262,22 @@ export function useGameStream(gameId: string | null): GameStreamState & {
     connect();
   }, [connect]);
 
+  const pause = useCallback(() => {
+    pauseRef.current = true;
+  }, []);
+
+  const resume = useCallback(() => {
+    pauseRef.current = false;
+    // Move buffered events into the playback queue and drain them
+    if (pauseQueueRef.current.length > 0) {
+      playbackQueueRef.current.push(...pauseQueueRef.current);
+      pauseQueueRef.current = [];
+      if (!playbackTimerRef.current) {
+        processPlaybackQueue();
+      }
+    }
+  }, [processPlaybackQueue]);
+
   // Connect on mount / gameId change
   useEffect(() => {
     if (!gameId) {
@@ -265,6 +288,8 @@ export function useGameStream(gameId: string | null): GameStreamState & {
     // Reset state for new game
     setState(INITIAL_STATE);
     playbackQueueRef.current = [];
+    pauseQueueRef.current = [];
+    pauseRef.current = false;
     isCatchingUpRef.current = false;
     isReconnectingRef.current = false;
 
@@ -295,6 +320,8 @@ export function useGameStream(gameId: string | null): GameStreamState & {
   return {
     ...state,
     reconnect,
+    pause,
+    resume,
   };
 }
 
