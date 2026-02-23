@@ -206,15 +206,18 @@ export function PlayScene({
   const isKickoffPlay = playType === 'kickoff';
 
   // ── Kickoff scene data ──────────────────────────────────────
-  // During kickoffs: possession = kicking team, teamAbbreviation = kicker, opposingTeam = receiver
+  // IMPORTANT: gameState is captured AFTER the kickoff is resolved, so
+  // possession is already flipped to the RECEIVING team by the time we see it.
+  // Therefore: teamAbbreviation = receiver, opposingTeamAbbreviation = kicker.
+  // The kicking team is the OPPOSITE of current possession.
+  const kickingTeam = possession === 'home' ? 'away' : 'home';
   const kickoffLandingX = (isKickoffPlay && lastPlay)
-    ? getKickoffLandingX(lastPlay, fromToRef.current.from, possession)
+    ? getKickoffLandingX(lastPlay, fromToRef.current.from, kickingTeam)
     : 0;
   const kickoffIsTouchback = isKickoffPlay && (lastPlay?.yardsGained === 0);
-  // Home team kicks left (scaleX normal), away team kicks right (flipKicker)
-  // Receiver is opposite
-  const kickerFlip = possession === 'home';
-  const receiverFlip = possession !== 'home';
+  // Home kicks right-to-left (faces right, no flip), Away kicks left-to-right (faces left, flip)
+  const kickerFlip = kickingTeam === 'away';
+  const receiverFlip = possession === 'away';
 
   return (
     <div className="absolute inset-0 pointer-events-none z-[15] overflow-hidden">
@@ -294,12 +297,13 @@ export function PlayScene({
       )}
 
       {/* ─── Kickoff Scene (two-logo cinematic) ─── */}
+      {/* Note: possession is already flipped to receiver, so opposingTeam = kicker */}
       {isKickoffPlay && isPlaying && lastPlay && (
         <KickoffScene
-          kickerAbbrev={teamAbbreviation}
-          kickerColor={teamColor}
-          receiverAbbrev={opposingTeamAbbreviation}
-          receiverColor={defenseColor}
+          kickerAbbrev={opposingTeamAbbreviation}
+          kickerColor={defenseColor}
+          receiverAbbrev={teamAbbreviation}
+          receiverColor={teamColor}
           fromX={fromToRef.current.from}
           toX={fromToRef.current.to}
           landingX={kickoffLandingX}
@@ -408,8 +412,8 @@ export function PlayScene({
 // KICKOFF LANDING X (shared by calculateSimpleBallX + KickoffScene)
 // ══════════════════════════════════════════════════════════════
 
-function getKickoffLandingX(play: PlayResult, fromX: number, possession: 'home' | 'away'): number {
-  const kickDir = possession === 'home' ? -1 : 1; // home kicks right-to-left, away kicks left-to-right
+function getKickoffLandingX(play: PlayResult, fromX: number, kickingTeam: 'home' | 'away'): number {
+  const kickDir = kickingTeam === 'home' ? -1 : 1; // home kicks right-to-left, away kicks left-to-right
   const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
   const meta = play.kickoffMeta;
   if (meta?.distance) {
@@ -476,7 +480,9 @@ function calculateSimpleBallX(
       return qbX + (toX - qbX) * easeOutCubic(sackT);
     }
     case 'kickoff': {
-      const landingX = getKickoffLandingX(play, fromX, possession);
+      // possession = receiving team (already flipped), so kicker is the opposite
+      const kicker = possession === 'home' ? 'away' : 'home';
+      const landingX = getKickoffLandingX(play, fromX, kicker);
       if (t < KICKOFF_PHASE_END) {
         const kickT = t / KICKOFF_PHASE_END;
         return fromX + (landingX - fromX) * easeInOutQuad(kickT);
@@ -546,10 +552,11 @@ function KickoffScene({
   const inDev = phase === 'development';
   const inResult = phase === 'result' || phase === 'post_play';
 
-  // ── Receiver starting position: near their own end zone ──
+  // ── Receiver starting position: near end zone where ball is headed ──
   // Home kicks right-to-left (toward 8.33), receiver waits near 8.33
   // Away kicks left-to-right (toward 91.66), receiver waits near 91.66
-  const receiverEndZone = flipKicker ? (8.33 + 5) : (91.66 - 5);
+  // flipKicker is true when away is kicking (kicks toward 91.66)
+  const receiverEndZone = flipKicker ? (91.66 - 5) : (8.33 + 5);
 
   // ── Phase breakpoints (within 0→1 animProgress during development) ──
   const CATCH_T = KICKOFF_PHASE_END; // 0.45
