@@ -48,7 +48,9 @@ interface PlayersOverlayProps {
   prevBallLeftPercent: number;
   possession: 'home' | 'away';
   offenseColor: string;
+  offenseSecondaryColor?: string;
   defenseColor: string;
+  defenseSecondaryColor?: string;
   lastPlay: PlayResult | null;
   playKey: number;
   isKickoff: boolean;
@@ -147,7 +149,9 @@ export function PlayersOverlay({
   prevBallLeftPercent,
   possession,
   offenseColor,
+  offenseSecondaryColor,
   defenseColor,
+  defenseSecondaryColor,
   lastPlay,
   playKey,
   isKickoff,
@@ -907,33 +911,30 @@ export function PlayersOverlay({
   const borderColor = teamColor || offenseColor;
   const cs = carrierStateRef.current;
 
-  // Triangle clip-paths: offense points toward opponent end zone, defense points back
-  // offDir=1 → offense goes right → triangle points right
-  // offDir=-1 → offense goes left → triangle points left
-  const offTriangle = offDir === 1
-    ? 'polygon(0% 0%, 100% 50%, 0% 100%)'    // points right →
-    : 'polygon(100% 0%, 0% 50%, 100% 100%)';  // points left ←
-  const defTriangle = offDir === 1
-    ? 'polygon(100% 0%, 0% 50%, 100% 100%)'   // points left ← (facing offense)
-    : 'polygon(0% 0%, 100% 50%, 0% 100%)';    // points right → (facing offense)
+  // Helmet direction: facemask faces toward the opponent
+  // offDir=1 → offense attacks right → helmet faces right
+  // offDir=-1 → offense attacks left → helmet faces left
+  const offFacingLeft = offDir === -1;
+  const defFacingLeft = offDir === 1;
+  const offSecondary = offenseSecondaryColor || '#ffffff';
+  const defSecondary = defenseSecondaryColor || '#ffffff';
 
   return (
     <div
       ref={containerRef}
       className="absolute inset-0 pointer-events-none z-[11]"
     >
-      {/* Offense dots (11) — dual-element: hidden logo carrier + visible dot */}
+      {/* Offense players (11) — SVG helmet + logo carrier */}
       {Array.from({ length: 11 }, (_, i) => {
         const isCarrier = i === ballCarrierIdx && cs.carrierMode !== 'special';
         const showLogo = isCarrier && (phase === 'development' || phase === 'result' || phase === 'pre_snap' || phase === 'snap');
         const pos = offDotsRef.current[i] || { x: 50, y: 50 };
-        // Role-based dot sizing: OL bigger/square-ish, skill positions medium
         const role = pos.role || 'OFF';
         const isOL = role === 'C' || role === 'LG' || role === 'RG' || role === 'LT' || role === 'RT';
-        const isSkill = role === 'WR' || role === 'TE' || role === 'RB' || role === 'FB';
-        const dotSize = isOL ? 18 : isSkill ? 14 : (role === 'QB' ? 16 : 14);
-        // Stagger: OL moves first (0ms), QB next (80ms), skill last (150ms)
-        const staggerDelay = phase === 'pre_snap' ? (isOL ? '0ms' : role === 'QB' ? '80ms' : '150ms') : '0ms';
+        const isQB = role === 'QB';
+        const helmetW = isOL ? 22 : isCarrier ? 24 : (isQB ? 20 : 18);
+        const helmetH = isOL ? 18 : isCarrier ? 20 : (isQB ? 16 : 14);
+        const staggerDelay = phase === 'pre_snap' ? (isOL ? '0ms' : isQB ? '80ms' : '150ms') : '0ms';
         return (
           <div
             key={`off-${i}`}
@@ -942,7 +943,7 @@ export function PlayersOverlay({
               left: `${pos.x}%`,
               top: `${pos.y}%`,
               transform: 'translate(-50%, -50%)',
-              zIndex: showLogo ? 20 : 3,
+              zIndex: showLogo ? 20 : (isQB ? 10 : 3),
               transition: transitionStyle,
               transitionDelay: staggerDelay,
             }}
@@ -976,21 +977,31 @@ export function PlayersOverlay({
                 />
               )}
             </div>
-            {/* Regular player triangle — points toward opponent end zone */}
-            <div
+            {/* SVG football helmet */}
+            <svg
               className={`carrier-dot ${isCarrier && !showLogo ? 'player-carrier-pulse' : ''}`}
+              viewBox="0 0 24 20"
+              width={helmetW}
+              height={helmetH}
               style={{
                 display: showLogo && logoUrl ? 'none' : 'block',
-                width: isCarrier ? 22 : dotSize,
-                height: isCarrier ? 22 : dotSize,
-                backgroundColor: offenseColor,
-                opacity: isCarrier ? 1.0 : 0.8,
-                clipPath: offTriangle,
+                transform: offFacingLeft ? 'scaleX(-1)' : 'none',
                 filter: isCarrier
                   ? `drop-shadow(0 0 6px ${offenseColor})`
                   : `drop-shadow(0 0 3px ${offenseColor}80)`,
+                opacity: isCarrier ? 1.0 : 0.85,
               }}
-            />
+            >
+              {/* Helmet shell */}
+              <path d="M3,2 C1,3 0,6 0,10 C0,14 1,17 3,18 L17,18 C20,17 22,14 22,12 L22,8 C22,6 20,3 17,2 Z" fill={offenseColor} />
+              {/* Facemask */}
+              <rect x="20" y="6" width="4" height="8" rx="1" fill="rgba(80,80,80,0.7)" />
+              <line x1="20.5" y1="8" x2="24" y2="8" stroke="rgba(180,180,180,0.6)" strokeWidth="0.8" />
+              <line x1="20.5" y1="10" x2="24" y2="10" stroke="rgba(180,180,180,0.6)" strokeWidth="0.8" />
+              <line x1="20.5" y1="12" x2="24" y2="12" stroke="rgba(180,180,180,0.6)" strokeWidth="0.8" />
+              {/* Center stripe */}
+              <path d="M2,10 C6,3 16,3 21,8" stroke={offSecondary} strokeWidth="2.5" fill="none" strokeLinecap="round" />
+            </svg>
           </div>
         );
       })}
@@ -1017,18 +1028,17 @@ export function PlayersOverlay({
         </svg>
       )}
 
-      {/* Defense dots (11) — DL get square markers, DBs triangular-ish */}
+      {/* Defense players (11) — SVG helmet facing offense */}
       {Array.from({ length: 11 }, (_, i) => {
         const pos = defDotsRef.current[i] || { x: 50, y: 50 };
         const role = pos.role || 'DEF';
         const isDL = role === 'DE' || role === 'DT' || role === 'NT';
         const isDB = role === 'CB' || role === 'NCB' || role === 'S';
         const isKR = role === 'KR';
-        const dotSize = isDL ? 18 : isDB ? 14 : 16;
-        // For kickoff returns: KR gets carrier logo after ball lands
+        const helmetW = isDL ? 22 : isDB ? 16 : 18;
+        const helmetH = isDL ? 18 : isDB ? 13 : 15;
         const isKRCarrier = cs.carrierMode === 'kickoff_return' && i === cs.receiverIdx && carrierTransferredRef.current;
         const showKRLogo = isKRCarrier && (phase === 'development' || phase === 'result');
-        // Receiving team's logo for KR (opposing team in kickoffs)
         const krLogoUrl = isKR && cs.carrierMode === 'kickoff_return' && opposingTeamAbbreviation
           ? getTeamLogoUrl(opposingTeamAbbreviation)
           : null;
@@ -1087,21 +1097,28 @@ export function PlayersOverlay({
                 )}
               </div>
             )}
-            {/* Regular player triangle — points toward offense */}
-            <div
+            {/* SVG football helmet — facing toward offense */}
+            <svg
               className={`carrier-dot ${isKRCarrier && !showKRLogo ? 'player-carrier-pulse' : ''}`}
+              viewBox="0 0 24 20"
+              width={isKRCarrier ? 24 : helmetW}
+              height={isKRCarrier ? 20 : helmetH}
               style={{
                 display: showKRLogo ? 'none' : 'block',
-                width: isKRCarrier ? 22 : dotSize,
-                height: isKRCarrier ? 22 : dotSize,
-                backgroundColor: defenseColor,
-                opacity: isKRCarrier ? 1.0 : 0.85,
-                clipPath: defTriangle,
+                transform: defFacingLeft ? 'scaleX(-1)' : 'none',
                 filter: isKRCarrier
                   ? `drop-shadow(0 0 6px ${defenseColor})`
                   : `drop-shadow(0 0 3px ${defenseColor}80)`,
+                opacity: isKRCarrier ? 1.0 : 0.85,
               }}
-            />
+            >
+              <path d="M3,2 C1,3 0,6 0,10 C0,14 1,17 3,18 L17,18 C20,17 22,14 22,12 L22,8 C22,6 20,3 17,2 Z" fill={defenseColor} />
+              <rect x="20" y="6" width="4" height="8" rx="1" fill="rgba(80,80,80,0.7)" />
+              <line x1="20.5" y1="8" x2="24" y2="8" stroke="rgba(180,180,180,0.6)" strokeWidth="0.8" />
+              <line x1="20.5" y1="10" x2="24" y2="10" stroke="rgba(180,180,180,0.6)" strokeWidth="0.8" />
+              <line x1="20.5" y1="12" x2="24" y2="12" stroke="rgba(180,180,180,0.6)" strokeWidth="0.8" />
+              <path d="M2,10 C6,3 16,3 21,8" stroke={defSecondary} strokeWidth="2.5" fill="none" strokeLinecap="round" />
+            </svg>
           </div>
         );
       })}

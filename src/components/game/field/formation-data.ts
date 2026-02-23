@@ -353,8 +353,8 @@ export function getIdlePositions(
     // Oval huddle centered 7% behind the LOS
     const huddleCx = losX + offDir * 7;
     const huddleCy = 50;
-    const radiusX = 2.2;  // horizontal radius
-    const radiusY = 5.5;  // vertical radius
+    const radiusX = 3.5;  // horizontal radius (wider to prevent helmet overlap)
+    const radiusY = 7.0;  // vertical radius
     return Array.from({ length: 11 }, (_, i) => {
       // Place players around an oval, leaving a gap at the "mouth" (toward LOS)
       // QB at position 0 faces toward LOS

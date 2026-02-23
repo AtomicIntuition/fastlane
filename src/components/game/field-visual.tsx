@@ -260,7 +260,9 @@ export function FieldVisual({
           prevBallLeftPercent={prevBallLeft}
           possession={possession}
           offenseColor={possessingTeam.primaryColor}
+          offenseSecondaryColor={possessingTeam.secondaryColor}
           defenseColor={defendingTeam.primaryColor}
+          defenseSecondaryColor={defendingTeam.secondaryColor}
           lastPlay={lastPlay}
           playKey={playKey}
           isKickoff={isKickoff}
