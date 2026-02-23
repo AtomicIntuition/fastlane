@@ -8,10 +8,11 @@ interface BoxScoreProps {
   boxScore: BoxScoreType | null;
   homeTeam: Team;
   awayTeam: Team;
+  defaultOpen?: boolean;
 }
 
-export function BoxScore({ boxScore, homeTeam, awayTeam }: BoxScoreProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+export function BoxScore({ boxScore, homeTeam, awayTeam, defaultOpen = false }: BoxScoreProps) {
+  const [isExpanded, setIsExpanded] = useState(defaultOpen);
 
   if (!boxScore) {
     return (

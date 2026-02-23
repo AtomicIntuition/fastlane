@@ -151,7 +151,7 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         transform="translate(2300, 0) scale(-1, 1)"
       />
 
-      {/* Midfield home team logo (home stadium branding) */}
+      {/* Midfield home team logo (home stadium branding, flipped to face left) */}
       <image
         href={getTeamLogoUrl(homeTeam.abbreviation)}
         x="510"
@@ -160,6 +160,7 @@ export function FieldSurface({ homeTeam, awayTeam, possession }: FieldSurfacePro
         height="180"
         opacity="0.12"
         preserveAspectRatio="xMidYMid meet"
+        transform="translate(1200, 0) scale(-1, 1)"
       />
 
       {/* Goal lines — with glow */}

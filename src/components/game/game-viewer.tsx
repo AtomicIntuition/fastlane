@@ -344,6 +344,16 @@ export function GameViewer({ gameId }: GameViewerProps) {
                 activeBoxScore={activeBoxScore}
               />
             </div>
+
+            {/* Box Score — open by default on desktop for the live stats view */}
+            <div className="flex-shrink-0 border-t border-white/[0.06] lg:overflow-y-auto lg:min-h-0 lg:flex-1">
+              <BoxScore
+                boxScore={activeBoxScore}
+                homeTeam={gameState.homeTeam}
+                awayTeam={gameState.awayTeam}
+                defaultOpen
+              />
+            </div>
           </div>
         </div>
 
@@ -360,15 +370,6 @@ export function GameViewer({ gameId }: GameViewerProps) {
               <NarrativeBar narrative={currentEvent.narrativeContext} />
             </div>
           )}
-
-          {/* Box Score — always visible */}
-          <div className="flex-shrink-0 border-t border-white/[0.06]">
-            <BoxScore
-              boxScore={activeBoxScore}
-              homeTeam={gameState.homeTeam}
-              awayTeam={gameState.awayTeam}
-            />
-          </div>
 
           {/* Play Feed — scrollable on both mobile and desktop */}
           <div className="min-h-[300px] lg:flex-1 lg:min-h-0 overflow-y-auto border-t border-white/[0.06]">
