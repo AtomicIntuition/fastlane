@@ -15,6 +15,12 @@ import {
   KICKOFF_POST_PLAY_MS,
   KICKOFF_PHASE_END,
   getKickoffDevMs,
+  PUNT_PRE_SNAP_MS,
+  PUNT_SNAP_MS,
+  PUNT_RESULT_MS,
+  PUNT_POST_PLAY_MS,
+  PUNT_PHASE_END,
+  getPuntDevMs,
 } from './play-timing';
 import type { Phase } from './play-timing';
 import { YARD_PCT, YARDS, yardsToPercent } from './yard-grid';
@@ -192,13 +198,14 @@ export function PlayScene({
     const toX = ballLeftPercent;
     fromToRef.current = { from: fromX, to: toX };
 
-    // Use kickoff-specific timing for kickoff plays
+    // Use play-type-specific timing
     const isKickoffPlay = lastPlay.type === 'kickoff';
-    const preMs = isKickoffPlay ? KICKOFF_PRE_SNAP_MS : PRE_SNAP_MS;
-    const snapMs = isKickoffPlay ? KICKOFF_SNAP_MS : SNAP_MS;
-    const devMs = isKickoffPlay ? getKickoffDevMs(lastPlay) : DEVELOPMENT_MS;
-    const resMs = isKickoffPlay ? KICKOFF_RESULT_MS : RESULT_MS;
-    const postMs = isKickoffPlay ? KICKOFF_POST_PLAY_MS : POST_PLAY_MS;
+    const isPuntPlay = lastPlay.type === 'punt';
+    const preMs = isKickoffPlay ? KICKOFF_PRE_SNAP_MS : isPuntPlay ? PUNT_PRE_SNAP_MS : PRE_SNAP_MS;
+    const snapMs = isKickoffPlay ? KICKOFF_SNAP_MS : isPuntPlay ? PUNT_SNAP_MS : SNAP_MS;
+    const devMs = isKickoffPlay ? getKickoffDevMs(lastPlay) : isPuntPlay ? getPuntDevMs(lastPlay) : DEVELOPMENT_MS;
+    const resMs = isKickoffPlay ? KICKOFF_RESULT_MS : isPuntPlay ? PUNT_RESULT_MS : RESULT_MS;
+    const postMs = isKickoffPlay ? KICKOFF_POST_PLAY_MS : isPuntPlay ? PUNT_POST_PLAY_MS : POST_PLAY_MS;
     const totalMs = preMs + snapMs + devMs + resMs + postMs;
 
     onAnimatingRef.current(true);
@@ -306,6 +313,16 @@ export function PlayScene({
   const kickerFlip = kickingTeam === 'away';
   const receiverFlip = possession === 'away';
 
+  // ── Punt scene data ───────────────────────────────────────
+  // Same as kickoff: possession has already flipped to the receiving team.
+  // opposingTeamAbbreviation = punting team, teamAbbreviation = receiving team.
+  const isPuntPlay = playType === 'punt';
+  const puntingTeam = possession === 'home' ? 'away' : 'home';
+  const punterFlip = puntingTeam === 'away';
+  const puntReceiverFlip = possession === 'away';
+  const puntIsTouchback = isPuntPlay && (lastPlay?.yardsGained === 0);
+  const puntIsFairCatch = isPuntPlay && (lastPlay?.description || '').toLowerCase().includes('fair catch');
+
   return (
     <div className="absolute inset-0 pointer-events-none z-[15] overflow-hidden">
       {/* ─── Speed Trail (runs/scrambles) ─── */}
@@ -372,8 +389,8 @@ export function PlayScene({
         <SpiralLines x={displayBallX} />
       )}
 
-      {/* ─── Kick Altitude Ghost (non-kickoff kicks only) ─── */}
-      {isPlaying && inDev && isKick && !isKickoffPlay && (
+      {/* ─── Kick Altitude Ghost (FG/XP only, not kickoff/punt) ─── */}
+      {isPlaying && inDev && isKick && !isKickoffPlay && !isPuntPlay && (
         <KickAltitudeGhost
           x={displayBallX}
           progress={animProgress}
@@ -405,8 +422,28 @@ export function PlayScene({
         />
       )}
 
+      {/* ─── Punt Scene (two-logo, punter + returner) ─── */}
+      {isPuntPlay && isPlaying && lastPlay && (
+        <PuntScene
+          punterAbbrev={opposingTeamAbbreviation}
+          punterColor={defenseColor}
+          receiverAbbrev={teamAbbreviation}
+          receiverColor={teamColor}
+          fromX={fromToRef.current.from}
+          toX={fromToRef.current.to}
+          animProgress={animProgress}
+          phase={phase}
+          isTouchback={puntIsTouchback}
+          isFairCatch={puntIsFairCatch}
+          isTD={isTD}
+          playKey={playKey}
+          flipPunter={punterFlip}
+          flipReceiver={puntReceiverFlip}
+        />
+      )}
+
       {/* ─── Scrimmage Travel Line ─── */}
-      {isPlaying && (inDev || inResult) && !isKickoffPlay && split && (
+      {isPlaying && (inDev || inResult) && !isKickoffPlay && !isPuntPlay && split && (
         (() => {
           const from = fromToRef.current.from;
           const to = fromToRef.current.to;
@@ -453,8 +490,8 @@ export function PlayScene({
         </div>
       )}
 
-      {/* ─── Logo Ball (hidden during kickoff animation) ─── */}
-      {!(isKickoffPlay && isPlaying) && (
+      {/* ─── Logo Ball (hidden during kickoff/punt animation) ─── */}
+      {!(isKickoffPlay && isPlaying) && !(isPuntPlay && isPlaying) && (
         <div
           className={!isPlaying ? 'logo-ball-breathe' : ''}
           style={{
@@ -952,6 +989,275 @@ function KickoffScene({
       )}
 
       {/* ─── Kicked Ball (golden circle in flight) ─── */}
+      {ballVisible && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${clamp(ballPosX, 2, 98)}%`,
+            top: `${ballPosY}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 21,
+          }}
+        >
+          <div
+            style={{
+              width: KICKOFF_BALL_SIZE,
+              height: KICKOFF_BALL_SIZE,
+              borderRadius: '50%',
+              backgroundColor: '#d4af37',
+              boxShadow: '0 0 8px #d4af3780, 0 0 16px #d4af3740',
+            }}
+          />
+        </div>
+      )}
+
+      {/* ─── Speed Trails (receiver return) ─── */}
+      {showSpeedTrails && (
+        <>
+          {[0.06, 0.12, 0.18, 0.24, 0.30, 0.36].map((offset, i) => {
+            const trailT = Math.max(CATCH_T, animProgress - offset);
+            const returnT = (trailT - CATCH_T) / (1 - CATCH_T);
+            const trailX = landingX + (toX - landingX) * easeOutCubic(returnT);
+            return (
+              <div
+                key={i}
+                className="absolute rounded-full"
+                style={{
+                  left: `${clamp(trailX, 2, 98)}%`,
+                  top: '50%',
+                  width: BALL_SIZE * (0.6 - i * 0.08),
+                  height: BALL_SIZE * (0.6 - i * 0.08),
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: receiverColor,
+                  opacity: 0.35 - i * 0.05,
+                  borderRadius: '50%',
+                  animation: 'speed-trail-fade 0.4s ease-out forwards',
+                }}
+              />
+            );
+          })}
+        </>
+      )}
+
+      {/* ─── Receiver Logo ─── */}
+      <div
+        style={{
+          position: 'absolute',
+          left: `${clamp(receiverX, 2, 98)}%`,
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 20,
+          opacity: receiverOpacity,
+        }}
+      >
+        {/* Big play glow for TD return */}
+        {isTD && inDev && animProgress > CATCH_T && (
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: BALL_SIZE + 20,
+              height: BALL_SIZE + 20,
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              animation: 'big-play-glow 0.8s ease-in-out infinite',
+              boxShadow: '0 0 20px #22c55e, 0 0 40px #22c55e50',
+              borderRadius: '50%',
+            }}
+          />
+        )}
+
+        <div
+          className="absolute rounded-full"
+          style={{
+            width: BALL_SIZE + 10,
+            height: BALL_SIZE + 10,
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: `radial-gradient(circle, ${receiverColor}40 0%, transparent 70%)`,
+            opacity: 0.8,
+          }}
+        />
+        <div
+          style={{
+            width: BALL_SIZE,
+            height: BALL_SIZE,
+            borderRadius: '50%',
+            border: `3px solid ${receiverColor}`,
+            backgroundColor: '#111827',
+            boxShadow: `0 0 12px ${receiverColor}60, 0 2px 8px rgba(0,0,0,0.8)`,
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <LogoImg
+            src={getTeamLogoUrl(receiverAbbrev, 100)}
+            size={BALL_SIZE - 10}
+            flip={flipReceiver}
+            playKey={playKey}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════
+// PUNT SCENE — Two-logo punt visualization (punter + returner)
+// ══════════════════════════════════════════════════════════════
+
+function PuntScene({
+  punterAbbrev,
+  punterColor,
+  receiverAbbrev,
+  receiverColor,
+  fromX,
+  toX,
+  animProgress,
+  phase,
+  isTouchback,
+  isFairCatch,
+  isTD,
+  playKey,
+  flipPunter,
+  flipReceiver,
+}: {
+  punterAbbrev: string;
+  punterColor: string;
+  receiverAbbrev: string;
+  receiverColor: string;
+  fromX: number;
+  toX: number;
+  animProgress: number;
+  phase: Phase;
+  isTouchback: boolean;
+  isFairCatch: boolean;
+  isTD: boolean;
+  playKey: number;
+  flipPunter: boolean;
+  flipReceiver: boolean;
+}) {
+  const inDev = phase === 'development';
+  const inResult = phase === 'result' || phase === 'post_play';
+
+  const CATCH_T = PUNT_PHASE_END; // 0.55
+
+  // ── Punt landing spot: where the ball comes down ──
+  // For touchbacks/fair catches, the ball lands at toX.
+  // For returns, the ball lands partway and then receiver runs to toX.
+  const landingX = isTouchback || isFairCatch
+    ? toX
+    : fromX + (toX - fromX) * 0.7; // ball lands ~70% of the way
+
+  // ── Receiver starting position: near own end zone / deep ──
+  const receiverEndZone = flipPunter ? (91.66 - 5) : (8.33 + 5);
+
+  // ── Punter logo ──
+  let punterOpacity = 1;
+  const punterX = fromX;
+  if (inDev) {
+    if (animProgress < CATCH_T) {
+      punterOpacity = 1 - animProgress * (0.5 / CATCH_T);
+    } else {
+      const fadeT = (animProgress - CATCH_T) / (1 - CATCH_T);
+      punterOpacity = 0.5 * (1 - fadeT);
+    }
+  } else if (inResult) {
+    punterOpacity = 0;
+  }
+
+  // ── Receiver logo ──
+  let receiverX = receiverEndZone;
+  const receiverOpacity = 1;
+  if (inDev) {
+    if (animProgress < 0.3) {
+      receiverX = receiverEndZone;
+    } else if (animProgress < CATCH_T) {
+      // Drift toward landing spot to catch
+      const driftT = (animProgress - 0.3) / (CATCH_T - 0.3);
+      receiverX = receiverEndZone + (landingX - receiverEndZone) * easeOutCubic(driftT);
+    } else if (isTouchback || isFairCatch) {
+      receiverX = landingX;
+    } else {
+      // Return phase
+      const returnT = (animProgress - CATCH_T) / (1 - CATCH_T);
+      receiverX = landingX + (toX - landingX) * easeOutCubic(returnT);
+    }
+  } else if (inResult) {
+    receiverX = toX;
+  }
+
+  // ── Punted ball (golden circle in flight) ──
+  let ballVisible = false;
+  let ballPosX = fromX;
+  let ballPosY = 50;
+  if (inDev && animProgress < CATCH_T) {
+    ballVisible = true;
+    const kickT = animProgress / CATCH_T;
+    ballPosX = fromX + (landingX - fromX) * easeInOutQuad(kickT);
+    // Parabolic arc — punts have high arc
+    const altitude = Math.sin(kickT * Math.PI);
+    ballPosY = 50 - altitude * 28;
+  }
+
+  // ── Speed trails on receiver during return ──
+  const showSpeedTrails = inDev && animProgress > CATCH_T && !isTouchback && !isFairCatch;
+
+  return (
+    <>
+      {/* ─── Punter Logo ─── */}
+      {punterOpacity > 0.01 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${clamp(punterX, 2, 98)}%`,
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 19,
+            opacity: punterOpacity,
+            transition: inResult ? 'opacity 300ms ease-out' : undefined,
+          }}
+        >
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: BALL_SIZE + 10,
+              height: BALL_SIZE + 10,
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: `radial-gradient(circle, ${punterColor}40 0%, transparent 70%)`,
+              opacity: 0.6,
+            }}
+          />
+          <div
+            style={{
+              width: BALL_SIZE,
+              height: BALL_SIZE,
+              borderRadius: '50%',
+              border: `3px solid ${punterColor}`,
+              backgroundColor: '#111827',
+              boxShadow: `0 0 12px ${punterColor}60, 0 2px 8px rgba(0,0,0,0.8)`,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <LogoImg
+              src={getTeamLogoUrl(punterAbbrev, 100)}
+              size={BALL_SIZE - 10}
+              flip={flipPunter}
+              playKey={playKey}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ─── Punted Ball (golden circle in flight) ─── */}
       {ballVisible && (
         <div
           style={{

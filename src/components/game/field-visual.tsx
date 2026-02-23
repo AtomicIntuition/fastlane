@@ -155,15 +155,44 @@ export function FieldVisual({
   const [showMatchupIntro, setShowMatchupIntro] = useState(false);
   const [showCoinFlip, setShowCoinFlip] = useState(false);
   const coinFlipShownRef = useRef(false);
+  const introShownRef = useRef(false);
 
-  // Show matchup intro on pregame event
+  // Show matchup intro on pregame event (live stream from start)
   useEffect(() => {
-    if (lastPlay?.type === 'pregame' && !coinFlipShownRef.current) {
+    if (lastPlay?.type === 'pregame' && !coinFlipShownRef.current && !introShownRef.current) {
+      introShownRef.current = true;
       setShowMatchupIntro(true);
     }
   }, [lastPlay]);
 
-  // On coin toss event: dismiss matchup intro, show coin flip
+  // Show matchup intro on first mount if game just started (catchup scenario).
+  // If the game is in its first kickoff (Q1, early clock) and we haven't shown
+  // the intro yet, show it briefly as if we caught the start.
+  useEffect(() => {
+    if (introShownRef.current || coinFlipShownRef.current) return;
+    if (!lastPlay || !gameStatus) return;
+    // Only trigger for very early game state: first play is a kickoff or coin_toss
+    // This covers the catchup scenario where pregame/coin_toss events were bundled
+    if (
+      gameStatus === 'live' &&
+      (lastPlay.type === 'kickoff' || lastPlay.type === 'coin_toss') &&
+      playKey <= 1
+    ) {
+      introShownRef.current = true;
+      setShowMatchupIntro(true);
+      // Auto-transition to coin flip after intro
+      const timer = setTimeout(() => {
+        setShowMatchupIntro(false);
+        setTimeout(() => {
+          setShowCoinFlip(true);
+          coinFlipShownRef.current = true;
+        }, 400);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [lastPlay, gameStatus, playKey]);
+
+  // On coin toss event: dismiss matchup intro, show coin flip (live stream)
   useEffect(() => {
     if (lastPlay?.type === 'coin_toss' && !coinFlipShownRef.current) {
       setShowMatchupIntro(false);
@@ -218,9 +247,6 @@ export function FieldVisual({
   const handlePlayAnimating = useCallback((animating: boolean) => {
     setIsPlayAnimating(animating);
   }, []);
-  const handlePhaseChange = useCallback((phase: Phase) => {
-    setPlayPhase(phase);
-  }, []);
 
   // ── Delayed overlay positions (old LOS/FD during animation) ─────
   // Problem: when an event arrives, gameState already has post-play positions,
@@ -228,31 +254,40 @@ export function FieldVisual({
   // markers to stay at their OLD positions during the animation, then snap to new.
   //
   // Strategy: keep displayed positions in state. Always track the latest target
-  // in a ref. Only flush target → displayed when playPhase hits 'result' (or
-  // later) for the current play. Track which playKey we've committed to avoid
-  // committing during the brief idle→pre_snap gap when a new event arrives.
+  // in a ref. Commit target → displayed ONLY when PlayScene's onPhaseChange
+  // callback fires with 'result' (synchronous, avoids React effect timing issues).
   const [overlayPositions, setOverlayPositions] = useState({ ball: ballLeft, fd: firstDownLeft });
   const targetOverlayRef = useRef({ ball: ballLeft, fd: firstDownLeft });
-  const committedPlayKeyRef = useRef(0);
+  const animatingRef = useRef(false);
 
   // Always keep the target up to date
   targetOverlayRef.current = { ball: ballLeft, fd: firstDownLeft };
 
-  // Commit positions when animation reaches result phase (ball has arrived)
-  useEffect(() => {
-    if (playPhase === 'result' || playPhase === 'post_play') {
-      committedPlayKeyRef.current = playKey;
+  // onPhaseChange callback — fires synchronously from PlayScene's setTimeout,
+  // NOT from a React effect, so it avoids the batching issue that caused
+  // positions to commit before the animation started.
+  const handlePhaseChange = useCallback((phase: Phase) => {
+    setPlayPhase(phase);
+    if (phase === 'pre_snap') {
+      // Animation is starting — lock positions at current displayed values
+      animatingRef.current = true;
+    } else if (phase === 'result' || phase === 'post_play') {
+      // Ball has arrived at destination — commit new positions
+      setOverlayPositions({ ...targetOverlayRef.current });
+    } else if (phase === 'idle') {
+      // Animation complete — unlock and sync
+      animatingRef.current = false;
       setOverlayPositions({ ...targetOverlayRef.current });
     }
-  }, [playPhase, playKey]);
+  }, []);
 
-  // When returning to idle AFTER result (animation fully complete), also commit
-  // This handles the transition from post_play → idle for the same play
+  // Also sync when NOT animating and positions change (e.g. initial load,
+  // catchup, or when overlay becomes visible after kickoff/PAT)
   useEffect(() => {
-    if (playPhase === 'idle' && committedPlayKeyRef.current === playKey) {
-      setOverlayPositions({ ...targetOverlayRef.current });
+    if (!animatingRef.current) {
+      setOverlayPositions({ ball: ballLeft, fd: firstDownLeft });
     }
-  }, [playPhase, playKey, ballLeft, firstDownLeft]);
+  }, [ballLeft, firstDownLeft]);
 
   const overlayBallLeft = overlayPositions.ball;
   const overlayFirstDownLeft = overlayPositions.fd;
