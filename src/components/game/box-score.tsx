@@ -12,7 +12,12 @@ interface BoxScoreProps {
 }
 
 export function BoxScore({ boxScore, homeTeam, awayTeam, defaultOpen = false }: BoxScoreProps) {
-  const [isExpanded, setIsExpanded] = useState(defaultOpen);
+  const [isExpanded, setIsExpanded] = useState(() => {
+    if (!defaultOpen) return false;
+    // Open by default only on desktop (lg breakpoint = 1024px)
+    if (typeof window !== 'undefined') return window.matchMedia('(min-width: 1024px)').matches;
+    return false;
+  });
 
   if (!boxScore) {
     return (
