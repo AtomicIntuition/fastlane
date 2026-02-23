@@ -907,6 +907,16 @@ export function PlayersOverlay({
   const borderColor = teamColor || offenseColor;
   const cs = carrierStateRef.current;
 
+  // Triangle clip-paths: offense points toward opponent end zone, defense points back
+  // offDir=1 → offense goes right → triangle points right
+  // offDir=-1 → offense goes left → triangle points left
+  const offTriangle = offDir === 1
+    ? 'polygon(0% 0%, 100% 50%, 0% 100%)'    // points right →
+    : 'polygon(100% 0%, 0% 50%, 100% 100%)';  // points left ←
+  const defTriangle = offDir === 1
+    ? 'polygon(100% 0%, 0% 50%, 100% 100%)'   // points left ← (facing offense)
+    : 'polygon(0% 0%, 100% 50%, 0% 100%)';    // points right → (facing offense)
+
   return (
     <div
       ref={containerRef}
@@ -966,19 +976,19 @@ export function PlayersOverlay({
                 />
               )}
             </div>
-            {/* Regular player dot — OL get square-ish markers, others round */}
+            {/* Regular player triangle — points toward opponent end zone */}
             <div
-              className={`carrier-dot ${isOL ? 'rounded-sm' : 'rounded-full'} ${isCarrier && !showLogo ? 'player-carrier-pulse' : ''}`}
+              className={`carrier-dot ${isCarrier && !showLogo ? 'player-carrier-pulse' : ''}`}
               style={{
                 display: showLogo && logoUrl ? 'none' : 'block',
                 width: isCarrier ? 22 : dotSize,
                 height: isCarrier ? 22 : dotSize,
                 backgroundColor: offenseColor,
                 opacity: isCarrier ? 1.0 : 0.8,
-                border: isOL ? `1px solid rgba(255,255,255,0.3)` : 'none',
-                boxShadow: isCarrier
-                  ? `0 0 12px 4px ${offenseColor}`
-                  : `0 0 5px ${offenseColor}80`,
+                clipPath: offTriangle,
+                filter: isCarrier
+                  ? `drop-shadow(0 0 6px ${offenseColor})`
+                  : `drop-shadow(0 0 3px ${offenseColor}80)`,
               }}
             />
           </div>
@@ -1077,19 +1087,19 @@ export function PlayersOverlay({
                 )}
               </div>
             )}
-            {/* Regular player dot */}
+            {/* Regular player triangle — points toward offense */}
             <div
-              className={`carrier-dot ${isDL ? 'rounded-sm' : 'rounded-full'} ${isKRCarrier && !showKRLogo ? 'player-carrier-pulse' : ''}`}
+              className={`carrier-dot ${isKRCarrier && !showKRLogo ? 'player-carrier-pulse' : ''}`}
               style={{
                 display: showKRLogo ? 'none' : 'block',
                 width: isKRCarrier ? 22 : dotSize,
                 height: isKRCarrier ? 22 : dotSize,
                 backgroundColor: defenseColor,
                 opacity: isKRCarrier ? 1.0 : 0.85,
-                border: isDL ? '1px solid rgba(255,255,255,0.3)' : 'none',
-                boxShadow: isKRCarrier
-                  ? `0 0 12px 4px ${defenseColor}`
-                  : `0 0 5px ${defenseColor}80`,
+                clipPath: defTriangle,
+                filter: isKRCarrier
+                  ? `drop-shadow(0 0 6px ${defenseColor})`
+                  : `drop-shadow(0 0 3px ${defenseColor}80)`,
               }}
             />
           </div>
