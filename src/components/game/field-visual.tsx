@@ -153,7 +153,8 @@ export function FieldVisual({
   const [showCoinFlip, setShowCoinFlip] = useState(false);
   const coinFlipShownRef = useRef(false);
   const [showKickoffIntro, setShowKickoffIntro] = useState(false);
-  const kickoffIntroShownRef = useRef(false);
+  // Track which playKey we last showed a kickoff intro for, to avoid re-triggering on the same play
+  const lastKickoffIntroPlayKeyRef = useRef(-1);
 
   useEffect(() => {
     if (lastPlay?.type === 'coin_toss' && !coinFlipShownRef.current) {
@@ -162,14 +163,29 @@ export function FieldVisual({
     }
   }, [lastPlay]);
 
+  // Show kickoff intro for every kickoff play (not just the opening one after coin flip)
+  const coinFlipJustCompletedRef = useRef(false);
+  useEffect(() => {
+    if (
+      lastPlay?.type === 'kickoff' &&
+      playKey !== lastKickoffIntroPlayKeyRef.current &&
+      !coinFlipJustCompletedRef.current // Skip the opening kickoff (handled by coin flip callback)
+    ) {
+      lastKickoffIntroPlayKeyRef.current = playKey;
+      setShowKickoffIntro(true);
+    }
+    // Clear the coin-flip guard after the first kickoff event processes
+    if (coinFlipJustCompletedRef.current && lastPlay?.type === 'kickoff') {
+      coinFlipJustCompletedRef.current = false;
+    }
+  }, [lastPlay, playKey]);
+
   const handleCoinFlipComplete = useCallback(() => {
     setShowCoinFlip(false);
-    if (!kickoffIntroShownRef.current) {
-      kickoffIntroShownRef.current = true;
-      setTimeout(() => {
-        setShowKickoffIntro(true);
-      }, 500);
-    }
+    coinFlipJustCompletedRef.current = true;
+    setTimeout(() => {
+      setShowKickoffIntro(true);
+    }, 500);
   }, []);
 
   const handleKickoffIntroComplete = useCallback(() => {
@@ -213,6 +229,21 @@ export function FieldVisual({
   const handlePhaseChange = useCallback((phase: Phase) => {
     setPlayPhase(phase);
   }, []);
+
+  // ── Delayed overlay positions (old LOS/FD during animation) ─────
+  // Track previous positions so the markers don't jump ahead of the ball animation.
+  // Updated only when playPhase transitions to idle/post_play/result (after animation ends).
+  const prevOverlayRef = useRef({ ball: ballLeft, fd: firstDownLeft });
+
+  useEffect(() => {
+    if (playPhase === 'idle' || playPhase === 'post_play' || playPhase === 'result') {
+      prevOverlayRef.current = { ball: ballLeft, fd: firstDownLeft };
+    }
+  }, [playPhase, ballLeft, firstDownLeft]);
+
+  const isAnimatingPhase = playPhase === 'pre_snap' || playPhase === 'snap' || playPhase === 'development';
+  const overlayBallLeft = isAnimatingPhase ? prevOverlayRef.current.ball : ballLeft;
+  const overlayFirstDownLeft = isAnimatingPhase ? prevOverlayRef.current.fd : firstDownLeft;
 
   // ── Big play border pulse ─────────────────────────────
   const [borderPulse, setBorderPulse] = useState(false);
@@ -262,8 +293,8 @@ export function FieldVisual({
         {/* z-6: Down & distance overlay (LOS, FD line, badge) */}
         {!isKickoff && !isPatAttempt && gameStatus === 'live' && (
           <DownDistanceOverlay
-            ballLeftPercent={ballLeft}
-            firstDownLeftPercent={firstDownLeft}
+            ballLeftPercent={overlayBallLeft}
+            firstDownLeftPercent={overlayFirstDownLeft}
             down={down}
             yardsToGo={yardsToGo}
             isRedZone={isRedZone}

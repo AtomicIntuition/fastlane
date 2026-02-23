@@ -440,6 +440,27 @@ export function resolveFieldGoal(
   );
   result.isClockStopped = true;
 
+  // --- Block check (before accuracy) ---
+  // Longer kicks are slightly easier to block
+  const blockRate = C.FIELD_GOAL_BLOCK_RATE * (distance > 30 ? 1 + (distance - 30) * 0.01 : 1);
+  if (rng.probability(blockRate)) {
+    // BLOCKED! Defense recovers at the spot (treated as a missed FG by the engine)
+    result.blocked = true;
+    result.yardsGained = 0;
+
+    const blockDescs = [
+      `${name} lines up the ${distance}-yard attempt... the snap, the kick — BLOCKED! ` +
+        `The defense gets a hand on it! The kick is BLOCKED!`,
+      `${distance}-yard field goal try by ${name}... IT'S BLOCKED! The defense crashes through ` +
+        `and smothers the kick! Huge play!`,
+      `${name} with the ${distance}-yard attempt... the kick is up — NO! BLOCKED AT THE LINE! ` +
+        `What a rush by the defense to get that block!`,
+    ];
+    result.description = blockDescs[rng.randomInt(0, blockDescs.length - 1)];
+
+    return result;
+  }
+
   // Get base accuracy and apply kicker rating modifier
   let accuracy = C.getFieldGoalAccuracy(distance);
 
@@ -532,6 +553,18 @@ export function resolveExtraPoint(
   result.clockElapsed = 0; // PATs don't consume game clock
   result.isClockStopped = true;
 
+  // --- Block check ---
+  if (rng.probability(C.EXTRA_POINT_BLOCK_RATE)) {
+    result.blocked = true;
+    result.yardsGained = 0;
+    const blockDescs = [
+      `${name} for the 33-yard extra point... BLOCKED! The defense gets a piece of it! The PAT is no good!`,
+      `The snap is down, ${name} kicks — BLOCKED! A huge hand from the interior! No extra point!`,
+    ];
+    result.description = blockDescs[rng.randomInt(0, blockDescs.length - 1)];
+    return result;
+  }
+
   let accuracy = C.EXTRA_POINT_RATE;
 
   // Slight kicker rating modifier
@@ -548,11 +581,11 @@ export function resolveExtraPoint(
       points: 1,
       scorer: kicker,
     };
-    result.description = `${name} for the extra point... GOOD. The PAT is up and through.`;
+    result.description = `${name} for the 33-yard extra point... GOOD. The PAT is up and through.`;
   } else {
     // Missed extra point
     result.description =
-      `${name} for the extra point... NO GOOD! The kick drifts wide! ` +
+      `${name} for the 33-yard extra point... NO GOOD! The kick drifts wide! ` +
       `That missed PAT could come back to haunt them.`;
   }
 

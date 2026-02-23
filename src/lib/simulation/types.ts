@@ -325,6 +325,8 @@ export interface PlayResult {
   personnelGrouping?: PersonnelGrouping;
   /** Named route concept used on pass plays. */
   routeConcept?: RouteConcept;
+  /** Whether a kick (FG or XP) was blocked by the defense. */
+  blocked?: boolean;
   /** Kickoff metadata for visualization (distance, hang time, catch spot). */
   kickoffMeta?: {
     distance: number;

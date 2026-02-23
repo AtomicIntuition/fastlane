@@ -162,6 +162,12 @@ export function getFieldGoalAccuracy(distanceYards: number): number {
   return 0;
 }
 
+/** Field goal block rate (~1.5% of FG attempts in the NFL) */
+export const FIELD_GOAL_BLOCK_RATE = 0.015;
+
+/** Extra point block rate (~0.8% of XP attempts) */
+export const EXTRA_POINT_BLOCK_RATE = 0.008;
+
 /** Extra point (PAT) success rate from the 15-yard line (~94% NFL average) */
 export const EXTRA_POINT_RATE = 0.94;
 
