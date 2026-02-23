@@ -3,10 +3,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import type { PlayResult, NarrativeSnapshot } from '@/lib/simulation/types';
 import { FieldSurface } from './field/field-surface';
-import { DriveTrail } from './field/drive-trail';
 import { DownDistanceOverlay } from './field/down-distance-overlay';
-import { SnakeTrail } from './field/snake-trail';
-import { PlayersOverlay } from './field/players-overlay';
 import { PlayScene } from './field/play-scene';
 import { CoinFlip } from './field/coin-flip';
 import { CelebrationOverlay } from './field/celebration-overlay';
@@ -68,10 +65,6 @@ export function FieldVisual({
   // First down line position
   const fdAbsolute = possession === 'home' ? 100 - firstDownLine : firstDownLine;
   const firstDownLeft = endZoneWidth + (Math.max(0, Math.min(100, fdAbsolute)) / 100) * fieldWidth;
-
-  // Drive start position
-  const dsAbsolute = possession === 'home' ? 100 - driveStartPosition : driveStartPosition;
-  const driveStartLeft = endZoneWidth + (Math.max(0, Math.min(100, dsAbsolute)) / 100) * fieldWidth;
 
   // ── Play tracking for animations ──────────────────────
   const [playKey, setPlayKey] = useState(0);
@@ -197,7 +190,6 @@ export function FieldVisual({
   const showOverlays = playPhase === 'idle' || playPhase === 'pre_snap' || playPhase === 'post_play';
   const isRedZone = ballPosition <= 20;
   const isGoalLine = ballPosition <= 5;
-  const showDriveTrail = gameStatus === 'live' && !isKickoff && !isPatAttempt;
 
   return (
     <div className="w-full h-full px-1.5 py-1">
@@ -220,14 +212,6 @@ export function FieldVisual({
         {/* z-0: Green field background */}
         <FieldSurface homeTeam={homeTeam} awayTeam={awayTeam} possession={possession} />
 
-        {/* z-4: Drive trail (dashed line showing drive progress) */}
-        <DriveTrail
-          driveStartPercent={driveStartLeft}
-          ballPercent={ballLeft}
-          teamColor={possessingTeam.primaryColor}
-          visible={showDriveTrail}
-        />
-
         {/* z-6: Down & distance overlay (LOS, FD line, badge) */}
         {showOverlays && !isKickoff && !isPatAttempt && gameStatus === 'live' && (
           <DownDistanceOverlay
@@ -241,39 +225,7 @@ export function FieldVisual({
           />
         )}
 
-        {/* z-8: Snake trail (yard-by-yard trail behind ball carrier) */}
-        <SnakeTrail
-          phase={playPhase}
-          ballLeftPercent={ballLeft}
-          prevBallLeftPercent={prevBallLeft}
-          possession={possession}
-          offenseColor={possessingTeam.primaryColor}
-          defenseColor={defendingTeam.primaryColor}
-          lastPlay={lastPlay}
-          playKey={playKey}
-        />
-
-        {/* z-10: Players overlay (22 dots, team logos, per-play animation) */}
-        <PlayersOverlay
-          phase={playPhase}
-          ballLeftPercent={ballLeft}
-          prevBallLeftPercent={prevBallLeft}
-          possession={possession}
-          offenseColor={possessingTeam.primaryColor}
-          offenseSecondaryColor={possessingTeam.secondaryColor}
-          defenseColor={defendingTeam.primaryColor}
-          defenseSecondaryColor={defendingTeam.secondaryColor}
-          lastPlay={lastPlay}
-          playKey={playKey}
-          isKickoff={isKickoff}
-          isPatAttempt={isPatAttempt}
-          gameStatus={gameStatus}
-          teamAbbreviation={possessingTeam.abbreviation}
-          teamColor={possessingTeam.primaryColor}
-          opposingTeamAbbreviation={defendingTeam.abbreviation}
-        />
-
-        {/* z-12: Play scene (football visual, phase timing driver) */}
+        {/* z-12: Play scene (logo ball + effects, phase timing driver) */}
         <PlayScene
           ballLeftPercent={ballLeft}
           prevBallLeftPercent={prevBallLeft}
@@ -284,6 +236,12 @@ export function FieldVisual({
           playKey={playKey}
           onAnimating={handlePlayAnimating}
           onPhaseChange={handlePhaseChange}
+          teamAbbreviation={possessingTeam.abbreviation}
+          opposingTeamAbbreviation={defendingTeam.abbreviation}
+          teamColor={possessingTeam.primaryColor}
+          teamSecondaryColor={possessingTeam.secondaryColor}
+          isKickoff={isKickoff}
+          isPatAttempt={isPatAttempt}
         />
 
         {/* z-20: Player name highlight */}

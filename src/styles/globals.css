@@ -935,3 +935,63 @@ body {
 .field-turnover-flash {
   animation: field-turnover-flash 0.5s ease-out;
 }
+
+/* ═══════════════════════════════════════════════════════════
+ * LOGO BALL — Keyframes for simplified field visual
+ * ═══════════════════════════════════════════════════════════ */
+
+/* ─── Speed Trail Fade (run/scramble trailing dots) ─── */
+@keyframes speed-trail-fade {
+  0% { opacity: 0.35; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+}
+
+/* ─── Big Play Glow (expanded pulsing ring) ─── */
+@keyframes big-play-glow {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+  50% { transform: translate(-50%, -50%) scale(1.3); opacity: 0.9; }
+}
+
+/* ─── Impact Burst (sack/TFL radiating lines) ─── */
+@keyframes impact-burst {
+  0% { opacity: 0.8; transform: translate(-50%, -50%) rotate(var(--_r, 0deg)) scaleY(0.3); }
+  50% { opacity: 1; transform: translate(-50%, -50%) rotate(var(--_r, 0deg)) scaleY(1.2); }
+  100% { opacity: 0; transform: translate(-50%, -50%) rotate(var(--_r, 0deg)) scaleY(1); }
+}
+
+/* ─── Shock Ring (turnover expanding rings) ─── */
+@keyframes shock-ring {
+  0% { opacity: 0.8; transform: translate(-50%, -50%) scale(0.5); }
+  60% { opacity: 0.5; }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2.5); }
+}
+
+/* ─── Spiral Rotate (deep pass rotating lines) ─── */
+@keyframes spiral-rotate {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ─── Touchdown Radial Burst ─── */
+@keyframes td-radial-burst {
+  0% { opacity: 0.8; transform: translate(-50%, -50%) scale(0.5); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.5); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(2); }
+}
+
+/* ─── Logo Ball Breathe (idle gentle pulse) ─── */
+@keyframes logo-ball-breathe {
+  0%, 100% { filter: drop-shadow(0 0 4px rgba(212, 175, 55, 0.3)); }
+  50% { filter: drop-shadow(0 0 10px rgba(212, 175, 55, 0.5)); }
+}
+
+.logo-ball-breathe {
+  animation: logo-ball-breathe 2.5s ease-in-out infinite;
+}
+
+/* ─── Kick Altitude (ghost ball rising) ─── */
+@keyframes kick-altitude {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+  50% { opacity: 0.3; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(0.8); }
+}
