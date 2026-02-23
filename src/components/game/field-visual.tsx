@@ -102,7 +102,10 @@ export function FieldVisual({
     }
 
     // Normal plays (run, pass, sack, made FG, etc.): possession hasn't changed.
-    const prevYardPos = ballPosition - (possession === 'home' ? -lastPlay.yardsGained : lastPlay.yardsGained);
+    // ballPosition is always from the possessing team's perspective (own 0→100).
+    // yardsGained is positive for forward progress, negative for lost yardage.
+    // Previous position = current - yards gained, regardless of which team.
+    const prevYardPos = ballPosition - lastPlay.yardsGained;
     const prevAbsolute = possession === 'home' ? 100 - prevYardPos : prevYardPos;
     return endZoneWidth + (Math.max(0, Math.min(100, prevAbsolute)) / 100) * fieldWidth;
   }, [lastPlay, ballPosition, possession, endZoneWidth, fieldWidth, ballLeft]);
@@ -253,44 +256,45 @@ export function FieldVisual({
   // but PlayScene animates the ball from old→new over ~4s. We want the LOS/FD
   // markers to stay at their OLD positions during the animation, then snap to new.
   //
-  // Strategy: keep displayed positions in state. Always track the latest target
-  // in a ref. Commit target → displayed ONLY when PlayScene's onPhaseChange
-  // callback fires with 'result' (synchronous, avoids React effect timing issues).
-  const [overlayPositions, setOverlayPositions] = useState({ ball: ballLeft, fd: firstDownLeft });
-  const targetOverlayRef = useRef({ ball: ballLeft, fd: firstDownLeft });
+  // Strategy: pure ref-based approach computed during render. No useEffect sync.
+  // 1. Detect new plays DURING RENDER → freeze overlay at old positions
+  // 2. handlePhaseChange('result') → unfreeze (next render shows current positions)
+  // 3. When not animating, frozenRef tracks current positions for next freeze
+  //
+  // This avoids all React effect timing issues because the guard is set during
+  // the same render pass that updates ballLeft/firstDownLeft.
   const animatingRef = useRef(false);
+  const frozenOverlayRef = useRef({ ball: ballLeft, fd: firstDownLeft });
+  const overlayPlayDetectRef = useRef<PlayResult | null>(null);
 
-  // Always keep the target up to date
-  targetOverlayRef.current = { ball: ballLeft, fd: firstDownLeft };
+  // Step 1: Detect new play DURING RENDER (before effects fire).
+  // For animatable play types, freeze immediately so the overlay keeps old values.
+  const NON_ANIMATED_TYPES = ['pregame', 'coin_toss', 'kneel', 'spike'];
+  if (lastPlay !== overlayPlayDetectRef.current) {
+    overlayPlayDetectRef.current = lastPlay;
+    if (lastPlay && !NON_ANIMATED_TYPES.includes(lastPlay.type)) {
+      animatingRef.current = true;
+    }
+  }
 
-  // onPhaseChange callback — fires synchronously from PlayScene's setTimeout,
-  // NOT from a React effect, so it avoids the batching issue that caused
-  // positions to commit before the animation started.
+  // Step 2: When NOT animating, keep frozenRef synced to current positions.
+  // This ensures the "old" values are correct for the next freeze.
+  if (!animatingRef.current) {
+    frozenOverlayRef.current = { ball: ballLeft, fd: firstDownLeft };
+  }
+
+  // Step 3: Compute display values. During animation show frozen; otherwise current.
+  const overlayBallLeft = animatingRef.current ? frozenOverlayRef.current.ball : ballLeft;
+  const overlayFirstDownLeft = animatingRef.current ? frozenOverlayRef.current.fd : firstDownLeft;
+
+  // onPhaseChange callback — unfreeze at 'result' so the next render shows new positions.
   const handlePhaseChange = useCallback((phase: Phase) => {
     setPlayPhase(phase);
-    if (phase === 'pre_snap') {
-      // Animation is starting — lock positions at current displayed values
-      animatingRef.current = true;
-    } else if (phase === 'result' || phase === 'post_play') {
-      // Ball has arrived at destination — commit new positions
-      setOverlayPositions({ ...targetOverlayRef.current });
-    } else if (phase === 'idle') {
-      // Animation complete — unlock and sync
+    if (phase === 'result') {
+      // Ball has arrived — unfreeze overlay positions
       animatingRef.current = false;
-      setOverlayPositions({ ...targetOverlayRef.current });
     }
   }, []);
-
-  // Also sync when NOT animating and positions change (e.g. initial load,
-  // catchup, or when overlay becomes visible after kickoff/PAT)
-  useEffect(() => {
-    if (!animatingRef.current) {
-      setOverlayPositions({ ball: ballLeft, fd: firstDownLeft });
-    }
-  }, [ballLeft, firstDownLeft]);
-
-  const overlayBallLeft = overlayPositions.ball;
-  const overlayFirstDownLeft = overlayPositions.fd;
 
   // ── Big play border pulse ─────────────────────────────
   const [borderPulse, setBorderPulse] = useState(false);

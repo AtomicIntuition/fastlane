@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayResult } from '@/lib/simulation/types';
-import { getTeamLogoUrl } from '@/lib/utils/team-logos';
+import { getTeamScoreboardLogoUrl } from '@/lib/utils/team-logos';
 import {
   PRE_SNAP_MS,
   SNAP_MS,
@@ -69,57 +69,20 @@ function easeInOutQuad(t: number): number {
 }
 
 // ══════════════════════════════════════════════════════════════
-// LOGO IMAGE WITH REACT-BASED FALLBACK
+// LOGO IMAGE — Simple img using ESPN scoreboard CDN
 // ══════════════════════════════════════════════════════════════
-// Safari can fire img.onerror on initial load due to CORS/cache timing,
-// but succeed moments later. Instead of permanently replacing the DOM node
-// (which React can't recover), we track failures in state and retry on
-// each new play (when playKey changes).
+// Uses the same ESPN combiner URL as the scorebug for reliable loading.
+// No retry/fallback logic — the CDN is stable and any flickering was
+// caused by the old retry mechanism itself.
 
 function LogoImg({
-  src, size, flip, playKey, opacity,
+  abbrev, size, flip, opacity,
 }: {
-  src: string; size: number; flip?: boolean; playKey?: number; opacity?: number;
+  abbrev: string; size: number; flip?: boolean; opacity?: number;
 }) {
-  const [retryCount, setRetryCount] = useState(0);
-  const [exhausted, setExhausted] = useState(false);
-  const retryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const MAX_RETRIES = 2;
-
-  // Reset retry state when playKey changes so the logo gets fresh retries
-  const prevKeyRef = useRef(playKey);
-  if (playKey !== prevKeyRef.current) {
-    prevKeyRef.current = playKey;
-    if (exhausted) { setExhausted(false); setRetryCount(0); }
-  }
-
-  // Cleanup timer on unmount
-  useEffect(() => () => { clearTimeout(retryTimerRef.current); }, []);
-
-  if (exhausted) {
-    return (
-      <span style={{ fontSize: size * 0.7, lineHeight: '1', opacity }}>{'\u{1F3C8}'}</span>
-    );
-  }
-
-  const handleError = () => {
-    if (retryCount < MAX_RETRIES) {
-      // Delay retry to let Safari CORS/cache settle
-      retryTimerRef.current = setTimeout(() => {
-        setRetryCount((c) => c + 1);
-      }, 500);
-    } else {
-      setExhausted(true);
-    }
-  };
-
-  // Cache-busting param on retries to bypass cached failures
-  const imgSrc = retryCount > 0 ? `${src}${src.includes('?') ? '&' : '?'}r=${retryCount}` : src;
-
   return (
     <img
-      key={retryCount}
-      src={imgSrc}
+      src={getTeamScoreboardLogoUrl(abbrev)}
       alt=""
       width={size}
       height={size}
@@ -131,7 +94,6 @@ function LogoImg({
         opacity,
       }}
       draggable={false}
-      onError={handleError}
     />
   );
 }
@@ -394,10 +356,9 @@ export function PlayScene({
         <KickAltitudeGhost
           x={displayBallX}
           progress={animProgress}
-          logoUrl={getTeamLogoUrl(activeLogo, 100)}
+          abbrev={activeLogo}
           borderColor={activeColor}
           flipLogo={flipLogo}
-          playKey={playKey}
         />
       )}
 
@@ -466,7 +427,7 @@ export function PlayScene({
         })()
       )}
 
-      {/* ─── Traveling Ball Dot (golden circle, separates from QB) ─── */}
+      {/* ─── Traveling Ball (football emoji, separates from QB) ─── */}
       {showBallDot && (
         <div
           style={{
@@ -476,17 +437,12 @@ export function PlayScene({
             transform: 'translate(-50%, -50%)',
             zIndex: 21,
             pointerEvents: 'none',
+            fontSize: 16,
+            lineHeight: 1,
+            filter: 'drop-shadow(0 0 6px rgba(212, 175, 55, 0.5))',
           }}
         >
-          <div
-            style={{
-              width: 14,
-              height: 14,
-              borderRadius: '50%',
-              backgroundColor: '#d4af37',
-              boxShadow: '0 0 8px #d4af3780, 0 0 16px #d4af3740',
-            }}
-          />
+          🏈
         </div>
       )}
 
@@ -552,10 +508,9 @@ export function PlayScene({
             }}
           >
             <LogoImg
-              src={getTeamLogoUrl(activeLogo, 100)}
+              abbrev={activeLogo}
               size={BALL_SIZE - 10}
               flip={flipLogo}
-              playKey={playKey}
             />
           </div>
         </div>
@@ -839,8 +794,6 @@ function showTravelingBall(type: string | undefined, animProgress: number, play:
 // KICKOFF SCENE — Two-logo cinematic kickoff visualization
 // ══════════════════════════════════════════════════════════════
 
-const KICKOFF_BALL_SIZE = 14;
-
 function KickoffScene({
   kickerAbbrev,
   kickerColor,
@@ -979,16 +932,15 @@ function KickoffScene({
             }}
           >
             <LogoImg
-              src={getTeamLogoUrl(kickerAbbrev, 100)}
+              abbrev={kickerAbbrev}
               size={BALL_SIZE - 10}
               flip={flipKicker}
-              playKey={playKey}
             />
           </div>
         </div>
       )}
 
-      {/* ─── Kicked Ball (golden circle in flight) ─── */}
+      {/* ─── Kicked Ball (football in flight) ─── */}
       {ballVisible && (
         <div
           style={{
@@ -997,17 +949,12 @@ function KickoffScene({
             top: `${ballPosY}%`,
             transform: 'translate(-50%, -50%)',
             zIndex: 21,
+            fontSize: 16,
+            lineHeight: 1,
+            filter: 'drop-shadow(0 0 6px rgba(212, 175, 55, 0.5))',
           }}
         >
-          <div
-            style={{
-              width: KICKOFF_BALL_SIZE,
-              height: KICKOFF_BALL_SIZE,
-              borderRadius: '50%',
-              backgroundColor: '#d4af37',
-              boxShadow: '0 0 8px #d4af3780, 0 0 16px #d4af3740',
-            }}
-          />
+          🏈
         </div>
       )}
 
@@ -1094,10 +1041,9 @@ function KickoffScene({
           }}
         >
           <LogoImg
-            src={getTeamLogoUrl(receiverAbbrev, 100)}
+            abbrev={receiverAbbrev}
             size={BALL_SIZE - 10}
             flip={flipReceiver}
-            playKey={playKey}
           />
         </div>
       </div>
@@ -1248,16 +1194,15 @@ function PuntScene({
             }}
           >
             <LogoImg
-              src={getTeamLogoUrl(punterAbbrev, 100)}
+              abbrev={punterAbbrev}
               size={BALL_SIZE - 10}
               flip={flipPunter}
-              playKey={playKey}
             />
           </div>
         </div>
       )}
 
-      {/* ─── Punted Ball (golden circle in flight) ─── */}
+      {/* ─── Punted Ball (football in flight) ─── */}
       {ballVisible && (
         <div
           style={{
@@ -1266,17 +1211,12 @@ function PuntScene({
             top: `${ballPosY}%`,
             transform: 'translate(-50%, -50%)',
             zIndex: 21,
+            fontSize: 16,
+            lineHeight: 1,
+            filter: 'drop-shadow(0 0 6px rgba(212, 175, 55, 0.5))',
           }}
         >
-          <div
-            style={{
-              width: KICKOFF_BALL_SIZE,
-              height: KICKOFF_BALL_SIZE,
-              borderRadius: '50%',
-              backgroundColor: '#d4af37',
-              boxShadow: '0 0 8px #d4af3780, 0 0 16px #d4af3740',
-            }}
-          />
+          🏈
         </div>
       )}
 
@@ -1363,10 +1303,9 @@ function PuntScene({
           }}
         >
           <LogoImg
-            src={getTeamLogoUrl(receiverAbbrev, 100)}
+            abbrev={receiverAbbrev}
             size={BALL_SIZE - 10}
             flip={flipReceiver}
-            playKey={playKey}
           />
         </div>
       </div>
@@ -1568,9 +1507,9 @@ function SpiralLines({ x }: { x: number }) {
 }
 
 function KickAltitudeGhost({
-  x, progress, logoUrl, borderColor, flipLogo, playKey,
+  x, progress, abbrev, borderColor, flipLogo,
 }: {
-  x: number; progress: number; logoUrl: string; borderColor: string; flipLogo?: boolean; playKey?: number;
+  x: number; progress: number; abbrev: string; borderColor: string; flipLogo?: boolean;
 }) {
   // Ghost rises up on a parabolic arc: peak at t=0.5
   const altitude = Math.sin(progress * Math.PI);
@@ -1604,10 +1543,9 @@ function KickAltitudeGhost({
         }}
       >
         <LogoImg
-          src={logoUrl}
+          abbrev={abbrev}
           size={BALL_SIZE * 0.8 - 8}
           flip={flipLogo}
-          playKey={playKey}
           opacity={0.5}
         />
       </div>
