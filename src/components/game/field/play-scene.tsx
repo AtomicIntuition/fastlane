@@ -200,9 +200,21 @@ export function PlayScene({
 
   // ── Logo Ball is ALWAYS visible ────────────────────────────
   // During idle: shows at ball position with gentle breathe animation
-  // During play: animates along straight line
+  // During play: animates along straight line (except kickoffs → KickoffScene)
 
   const displayX = isPlaying ? ballX : ballLeftPercent;
+  const isKickoffPlay = playType === 'kickoff';
+
+  // ── Kickoff scene data ──────────────────────────────────────
+  // During kickoffs: possession = kicking team, teamAbbreviation = kicker, opposingTeam = receiver
+  const kickoffLandingX = (isKickoffPlay && lastPlay)
+    ? getKickoffLandingX(lastPlay, fromToRef.current.from, possession)
+    : 0;
+  const kickoffIsTouchback = isKickoffPlay && (lastPlay?.yardsGained === 0);
+  // Home team kicks left (scaleX normal), away team kicks right (flipKicker)
+  // Receiver is opposite
+  const kickerFlip = possession === 'home';
+  const receiverFlip = possession !== 'home';
 
   return (
     <div className="absolute inset-0 pointer-events-none z-[15] overflow-hidden">
@@ -270,8 +282,8 @@ export function PlayScene({
         <SpiralLines x={displayX} />
       )}
 
-      {/* ─── Kick Altitude Ghost ─── */}
-      {isPlaying && inDev && isKick && (
+      {/* ─── Kick Altitude Ghost (non-kickoff kicks only) ─── */}
+      {isPlaying && inDev && isKick && !isKickoffPlay && (
         <KickAltitudeGhost
           x={displayX}
           progress={animProgress}
@@ -281,82 +293,103 @@ export function PlayScene({
         />
       )}
 
-      {/* ─── Logo Ball ─── */}
-      <div
-        className={!isPlaying ? 'logo-ball-breathe' : ''}
-        style={{
-          position: 'absolute',
-          left: `${clamp(displayX, 2, 98)}%`,
-          top: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 20,
-          transition: !isPlaying
-            ? 'left 600ms cubic-bezier(0.34, 1.56, 0.64, 1)'
-            : undefined,
-        }}
-      >
-        {/* Big play glow ring */}
-        {isPlaying && isBigPlay && inDev && (
+      {/* ─── Kickoff Scene (two-logo cinematic) ─── */}
+      {isKickoffPlay && isPlaying && lastPlay && (
+        <KickoffScene
+          kickerAbbrev={teamAbbreviation}
+          kickerColor={teamColor}
+          receiverAbbrev={opposingTeamAbbreviation}
+          receiverColor={defenseColor}
+          fromX={fromToRef.current.from}
+          toX={fromToRef.current.to}
+          landingX={kickoffLandingX}
+          animProgress={animProgress}
+          phase={phase}
+          isTouchback={kickoffIsTouchback}
+          isTD={isTD}
+          flipKicker={kickerFlip}
+          flipReceiver={receiverFlip}
+        />
+      )}
+
+      {/* ─── Logo Ball (hidden during kickoff animation) ─── */}
+      {!(isKickoffPlay && isPlaying) && (
+        <div
+          className={!isPlaying ? 'logo-ball-breathe' : ''}
+          style={{
+            position: 'absolute',
+            left: `${clamp(displayX, 2, 98)}%`,
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 20,
+            transition: !isPlaying
+              ? 'left 600ms cubic-bezier(0.34, 1.56, 0.64, 1)'
+              : undefined,
+          }}
+        >
+          {/* Big play glow ring */}
+          {isPlaying && isBigPlay && inDev && (
+            <div
+              className="absolute rounded-full"
+              style={{
+                width: BALL_SIZE + 20,
+                height: BALL_SIZE + 20,
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                animation: 'big-play-glow 0.8s ease-in-out infinite',
+                boxShadow: `0 0 20px ${isTD ? '#22c55e' : '#d4af37'}, 0 0 40px ${isTD ? '#22c55e50' : '#d4af3750'}`,
+                borderRadius: '50%',
+              }}
+            />
+          )}
+
+          {/* Outer glow */}
           <div
             className="absolute rounded-full"
             style={{
-              width: BALL_SIZE + 20,
-              height: BALL_SIZE + 20,
+              width: BALL_SIZE + 10,
+              height: BALL_SIZE + 10,
               top: '50%',
               left: '50%',
               transform: 'translate(-50%, -50%)',
-              animation: 'big-play-glow 0.8s ease-in-out infinite',
-              boxShadow: `0 0 20px ${isTD ? '#22c55e' : '#d4af37'}, 0 0 40px ${isTD ? '#22c55e50' : '#d4af3750'}`,
-              borderRadius: '50%',
+              background: `radial-gradient(circle, ${activeColor}40 0%, transparent 70%)`,
+              opacity: isPlaying ? 0.8 : 0.5,
             }}
           />
-        )}
 
-        {/* Outer glow */}
-        <div
-          className="absolute rounded-full"
-          style={{
-            width: BALL_SIZE + 10,
-            height: BALL_SIZE + 10,
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            background: `radial-gradient(circle, ${activeColor}40 0%, transparent 70%)`,
-            opacity: isPlaying ? 0.8 : 0.5,
-          }}
-        />
-
-        {/* Main ball circle with logo */}
-        <div
-          style={{
-            width: BALL_SIZE,
-            height: BALL_SIZE,
-            borderRadius: '50%',
-            border: `3px solid ${activeColor}`,
-            backgroundColor: '#111827',
-            boxShadow: `0 0 12px ${activeColor}60, 0 2px 8px rgba(0,0,0,0.8)`,
-            overflow: 'hidden',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <img
-            src={getTeamLogoUrl(activeLogo, 100)}
-            alt=""
-            width={BALL_SIZE - 10}
-            height={BALL_SIZE - 10}
+          {/* Main ball circle with logo */}
+          <div
             style={{
-              objectFit: 'contain',
-              pointerEvents: 'none',
-              userSelect: 'none',
-              transform: flipLogo ? 'scaleX(-1)' : undefined,
+              width: BALL_SIZE,
+              height: BALL_SIZE,
+              borderRadius: '50%',
+              border: `3px solid ${activeColor}`,
+              backgroundColor: '#111827',
+              boxShadow: `0 0 12px ${activeColor}60, 0 2px 8px rgba(0,0,0,0.8)`,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
-            draggable={false}
-            onError={handleLogoError}
-          />
+          >
+            <img
+              src={getTeamLogoUrl(activeLogo, 100)}
+              alt=""
+              width={BALL_SIZE - 10}
+              height={BALL_SIZE - 10}
+              style={{
+                objectFit: 'contain',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                transform: flipLogo ? 'scaleX(-1)' : undefined,
+              }}
+              draggable={false}
+              onError={handleLogoError}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ─── Outcome markers ─── */}
       {isPlaying && inResult && lastPlay && (
@@ -369,6 +402,21 @@ export function PlayScene({
       )}
     </div>
   );
+}
+
+// ══════════════════════════════════════════════════════════════
+// KICKOFF LANDING X (shared by calculateSimpleBallX + KickoffScene)
+// ══════════════════════════════════════════════════════════════
+
+function getKickoffLandingX(play: PlayResult, fromX: number, possession: 'home' | 'away'): number {
+  const kickDir = possession === 'home' ? -1 : 1; // home kicks right-to-left, away kicks left-to-right
+  const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
+  const meta = play.kickoffMeta;
+  if (meta?.distance) {
+    return fromX + kickDir * yardsToPercent(meta.distance);
+  }
+  const catchSpotPct = meta ? (meta.catchSpot / 100) : 0.85;
+  return fromX + (receiverEndZone - fromX) * Math.min(catchSpotPct, 0.95);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -428,33 +476,12 @@ function calculateSimpleBallX(
       return qbX + (toX - qbX) * easeOutCubic(sackT);
     }
     case 'kickoff': {
-      // Two phases: kick flight, then return
+      const landingX = getKickoffLandingX(play, fromX, possession);
       if (t < KICKOFF_PHASE_END) {
         const kickT = t / KICKOFF_PHASE_END;
-        const kickDir = toX < fromX ? -1 : 1;
-        const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
-        const meta = play.kickoffMeta;
-        let landingX: number;
-        if (meta?.distance) {
-          landingX = fromX + kickDir * yardsToPercent(meta.distance);
-        } else {
-          const catchSpotPct = meta ? (meta.catchSpot / 100) : 0.85;
-          landingX = fromX + (receiverEndZone - fromX) * Math.min(catchSpotPct, 0.95);
-        }
         return fromX + (landingX - fromX) * easeInOutQuad(kickT);
       }
-      // Return phase
       const returnT = (t - KICKOFF_PHASE_END) / (1 - KICKOFF_PHASE_END);
-      const kickDir = toX < fromX ? -1 : 1;
-      const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
-      const meta = play.kickoffMeta;
-      let landingX: number;
-      if (meta?.distance) {
-        landingX = fromX + kickDir * yardsToPercent(meta.distance);
-      } else {
-        const catchSpotPct = meta ? (meta.catchSpot / 100) : 0.85;
-        landingX = fromX + (receiverEndZone - fromX) * Math.min(catchSpotPct, 0.95);
-      }
       return landingX + (toX - landingX) * easeOutCubic(returnT);
     }
     case 'punt': {
@@ -479,6 +506,289 @@ function calculateSimpleBallX(
     default:
       return fromX + (toX - fromX) * easeOutCubic(t);
   }
+}
+
+// ══════════════════════════════════════════════════════════════
+// KICKOFF SCENE — Two-logo cinematic kickoff visualization
+// ══════════════════════════════════════════════════════════════
+
+const KICKOFF_BALL_SIZE = 14;
+
+function KickoffScene({
+  kickerAbbrev,
+  kickerColor,
+  receiverAbbrev,
+  receiverColor,
+  fromX,
+  toX,
+  landingX,
+  animProgress,
+  phase,
+  isTouchback,
+  isTD,
+  flipKicker,
+  flipReceiver,
+}: {
+  kickerAbbrev: string;
+  kickerColor: string;
+  receiverAbbrev: string;
+  receiverColor: string;
+  fromX: number;
+  toX: number;
+  landingX: number;
+  animProgress: number;
+  phase: Phase;
+  isTouchback: boolean;
+  isTD: boolean;
+  flipKicker: boolean;
+  flipReceiver: boolean;
+}) {
+  const inDev = phase === 'development';
+  const inResult = phase === 'result' || phase === 'post_play';
+
+  // ── Receiver starting position: near their own end zone ──
+  // Home kicks right-to-left (toward 8.33), receiver waits near 8.33
+  // Away kicks left-to-right (toward 91.66), receiver waits near 91.66
+  const receiverEndZone = flipKicker ? (8.33 + 5) : (91.66 - 5);
+
+  // ── Phase breakpoints (within 0→1 animProgress during development) ──
+  const CATCH_T = KICKOFF_PHASE_END; // 0.45
+
+  // ── Kicker logo ──
+  let kickerOpacity = 1;
+  let kickerX = fromX;
+  if (inDev) {
+    if (animProgress < CATCH_T) {
+      kickerOpacity = 1 - animProgress * (0.5 / CATCH_T); // 1 → 0.5
+    } else {
+      const fadeT = (animProgress - CATCH_T) / (1 - CATCH_T);
+      kickerOpacity = 0.5 * (1 - fadeT); // 0.5 → 0
+    }
+  } else if (inResult) {
+    kickerOpacity = 0;
+  }
+
+  // ── Receiver logo ──
+  let receiverX = receiverEndZone;
+  let receiverOpacity = 1;
+  if (inDev) {
+    if (animProgress < 0.3) {
+      // Holds position
+      receiverX = receiverEndZone;
+    } else if (animProgress < CATCH_T) {
+      // Drifts toward landing spot
+      const driftT = (animProgress - 0.3) / (CATCH_T - 0.3);
+      receiverX = receiverEndZone + (landingX - receiverEndZone) * easeOutCubic(driftT);
+    } else if (isTouchback) {
+      // Touchback: stays at landing position (end zone area)
+      receiverX = landingX;
+    } else {
+      // Return phase: runs from landing to final position
+      const returnT = (animProgress - CATCH_T) / (1 - CATCH_T);
+      receiverX = landingX + (toX - landingX) * easeOutCubic(returnT);
+    }
+  } else if (inResult) {
+    receiverX = toX;
+  }
+
+  // ── Kicked ball (golden circle) ──
+  let ballVisible = false;
+  let ballPosX = fromX;
+  let ballPosY = 50;
+  if (inDev && animProgress < CATCH_T) {
+    ballVisible = true;
+    const kickT = animProgress / CATCH_T;
+    ballPosX = fromX + (landingX - fromX) * easeInOutQuad(kickT);
+    // Parabolic arc — peaks at midpoint
+    const altitude = Math.sin(kickT * Math.PI);
+    ballPosY = 50 - altitude * 25;
+  }
+
+  // ── Speed trails on receiver during return ──
+  const showSpeedTrails = inDev && animProgress > CATCH_T && !isTouchback;
+
+  return (
+    <>
+      {/* ─── Kicker Logo ─── */}
+      {kickerOpacity > 0.01 && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${clamp(kickerX, 2, 98)}%`,
+            top: '50%',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 19,
+            opacity: kickerOpacity,
+            transition: inResult ? 'opacity 300ms ease-out' : undefined,
+          }}
+        >
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: BALL_SIZE + 10,
+              height: BALL_SIZE + 10,
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              background: `radial-gradient(circle, ${kickerColor}40 0%, transparent 70%)`,
+              opacity: 0.6,
+            }}
+          />
+          <div
+            style={{
+              width: BALL_SIZE,
+              height: BALL_SIZE,
+              borderRadius: '50%',
+              border: `3px solid ${kickerColor}`,
+              backgroundColor: '#111827',
+              boxShadow: `0 0 12px ${kickerColor}60, 0 2px 8px rgba(0,0,0,0.8)`,
+              overflow: 'hidden',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <img
+              src={getTeamLogoUrl(kickerAbbrev, 100)}
+              alt=""
+              width={BALL_SIZE - 10}
+              height={BALL_SIZE - 10}
+              style={{
+                objectFit: 'contain',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                transform: flipKicker ? 'scaleX(-1)' : undefined,
+              }}
+              draggable={false}
+              onError={handleLogoError}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ─── Kicked Ball (golden circle in flight) ─── */}
+      {ballVisible && (
+        <div
+          style={{
+            position: 'absolute',
+            left: `${clamp(ballPosX, 2, 98)}%`,
+            top: `${ballPosY}%`,
+            transform: 'translate(-50%, -50%)',
+            zIndex: 21,
+          }}
+        >
+          <div
+            style={{
+              width: KICKOFF_BALL_SIZE,
+              height: KICKOFF_BALL_SIZE,
+              borderRadius: '50%',
+              backgroundColor: '#d4af37',
+              boxShadow: '0 0 8px #d4af3780, 0 0 16px #d4af3740',
+            }}
+          />
+        </div>
+      )}
+
+      {/* ─── Speed Trails (receiver return) ─── */}
+      {showSpeedTrails && (
+        <>
+          {[0.06, 0.12, 0.18, 0.24, 0.30, 0.36].map((offset, i) => {
+            const trailT = Math.max(CATCH_T, animProgress - offset);
+            const returnT = (trailT - CATCH_T) / (1 - CATCH_T);
+            const trailX = landingX + (toX - landingX) * easeOutCubic(returnT);
+            return (
+              <div
+                key={i}
+                className="absolute rounded-full"
+                style={{
+                  left: `${clamp(trailX, 2, 98)}%`,
+                  top: '50%',
+                  width: BALL_SIZE * (0.6 - i * 0.08),
+                  height: BALL_SIZE * (0.6 - i * 0.08),
+                  transform: 'translate(-50%, -50%)',
+                  backgroundColor: receiverColor,
+                  opacity: 0.35 - i * 0.05,
+                  borderRadius: '50%',
+                  animation: 'speed-trail-fade 0.4s ease-out forwards',
+                }}
+              />
+            );
+          })}
+        </>
+      )}
+
+      {/* ─── Receiver Logo ─── */}
+      <div
+        style={{
+          position: 'absolute',
+          left: `${clamp(receiverX, 2, 98)}%`,
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          zIndex: 20,
+          opacity: receiverOpacity,
+        }}
+      >
+        {/* Big play glow for TD return */}
+        {isTD && inDev && animProgress > CATCH_T && (
+          <div
+            className="absolute rounded-full"
+            style={{
+              width: BALL_SIZE + 20,
+              height: BALL_SIZE + 20,
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              animation: 'big-play-glow 0.8s ease-in-out infinite',
+              boxShadow: '0 0 20px #22c55e, 0 0 40px #22c55e50',
+              borderRadius: '50%',
+            }}
+          />
+        )}
+
+        <div
+          className="absolute rounded-full"
+          style={{
+            width: BALL_SIZE + 10,
+            height: BALL_SIZE + 10,
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            background: `radial-gradient(circle, ${receiverColor}40 0%, transparent 70%)`,
+            opacity: 0.8,
+          }}
+        />
+        <div
+          style={{
+            width: BALL_SIZE,
+            height: BALL_SIZE,
+            borderRadius: '50%',
+            border: `3px solid ${receiverColor}`,
+            backgroundColor: '#111827',
+            boxShadow: `0 0 12px ${receiverColor}60, 0 2px 8px rgba(0,0,0,0.8)`,
+            overflow: 'hidden',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <img
+            src={getTeamLogoUrl(receiverAbbrev, 100)}
+            alt=""
+            width={BALL_SIZE - 10}
+            height={BALL_SIZE - 10}
+            style={{
+              objectFit: 'contain',
+              pointerEvents: 'none',
+              userSelect: 'none',
+              transform: flipReceiver ? 'scaleX(-1)' : undefined,
+            }}
+            draggable={false}
+            onError={handleLogoError}
+          />
+        </div>
+      </div>
+    </>
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -744,6 +1054,16 @@ function OutcomeMarker({
     text = 'TOUCHDOWN!';
     color = '#22c55e';
     size = 'lg';
+  } else if (lastPlay.type === 'kickoff') {
+    if (lastPlay.yardsGained === 0) {
+      text = 'TOUCHBACK';
+      color = '#94a3b8'; // muted white/slate
+      size = 'md';
+    } else {
+      text = `+${lastPlay.yardsGained} YDS`;
+      color = '#22c55e';
+      size = 'sm';
+    }
   } else if (lastPlay.type === 'pass_incomplete') {
     text = 'INCOMPLETE';
     color = '#ef4444';
