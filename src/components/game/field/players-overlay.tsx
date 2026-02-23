@@ -933,8 +933,8 @@ export function PlayersOverlay({
         const role = pos.role || 'OFF';
         const isOL = role === 'C' || role === 'LG' || role === 'RG' || role === 'LT' || role === 'RT';
         const isQB = role === 'QB';
-        const helmetW = isOL ? 26 : isCarrier ? 28 : (isQB ? 24 : 22);
-        const helmetH = isOL ? 20 : isCarrier ? 22 : (isQB ? 18 : 16);
+        const helmetW = isOL ? 32 : isCarrier ? 38 : (isQB ? 30 : 28);
+        const helmetH = isOL ? 30 : isCarrier ? 36 : (isQB ? 28 : 26);
         const staggerDelay = phase === 'pre_snap' ? (isOL ? '0ms' : isQB ? '80ms' : '150ms') : '0ms';
         return (
           <div
@@ -978,30 +978,29 @@ export function PlayersOverlay({
                 />
               )}
             </div>
-            {/* Football helmet using SVG mask + team color + logo */}
+            {/* Football helmet — layered: color fill + logo + outline */}
             <div
               className={`carrier-dot ${isCarrier && !showLogo ? 'player-carrier-pulse' : ''}`}
               style={{
                 display: showLogo && logoUrl ? 'none' : 'block',
                 width: helmetW,
                 height: helmetH,
-                backgroundColor: offenseColor,
-                WebkitMaskImage: 'url(/football_helmet_outline.svg)',
-                WebkitMaskSize: 'contain',
-                WebkitMaskRepeat: 'no-repeat',
-                WebkitMaskPosition: 'center',
-                maskImage: 'url(/football_helmet_outline.svg)',
-                maskSize: 'contain',
-                maskRepeat: 'no-repeat',
-                maskPosition: 'center',
+                position: 'relative',
                 transform: offFacingLeft ? 'scaleX(-1)' : 'none',
                 filter: isCarrier
                   ? `drop-shadow(0 0 6px ${offenseColor})`
                   : `drop-shadow(0 0 3px ${offenseColor}80)`,
                 opacity: isCarrier ? 1.0 : 0.85,
-                position: 'relative',
               }}
             >
+              {/* Base: team color fill */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: offenseColor,
+                borderRadius: '45% 20% 20% 40%',
+              }} />
+              {/* Team logo — big and visible */}
               {offHelmetLogoUrl && (
                 <img
                   src={offHelmetLogoUrl}
@@ -1009,16 +1008,30 @@ export function PlayersOverlay({
                   draggable={false}
                   style={{
                     position: 'absolute',
-                    width: '60%',
-                    height: '60%',
+                    width: '70%',
+                    height: '70%',
                     top: '15%',
-                    left: '18%',
+                    left: '12%',
                     objectFit: 'contain',
-                    opacity: 0.7,
+                    opacity: 0.85,
                     transform: offFacingLeft ? 'scaleX(-1)' : 'none',
                   }}
                 />
               )}
+              {/* Helmet outline SVG on top */}
+              <img
+                src="/football_helmet_outline.svg"
+                alt=""
+                draggable={false}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  opacity: 0.4,
+                }}
+              />
             </div>
           </div>
         );
@@ -1053,8 +1066,8 @@ export function PlayersOverlay({
         const isDL = role === 'DE' || role === 'DT' || role === 'NT';
         const isDB = role === 'CB' || role === 'NCB' || role === 'S';
         const isKR = role === 'KR';
-        const helmetW = isDL ? 26 : isDB ? 20 : 22;
-        const helmetH = isDL ? 20 : isDB ? 16 : 18;
+        const helmetW = isDL ? 32 : isDB ? 26 : 28;
+        const helmetH = isDL ? 30 : isDB ? 24 : 26;
         const isKRCarrier = cs.carrierMode === 'kickoff_return' && i === cs.receiverIdx && carrierTransferredRef.current;
         const showKRLogo = isKRCarrier && (phase === 'development' || phase === 'result');
         const krLogoUrl = isKR && cs.carrierMode === 'kickoff_return' && opposingTeamAbbreviation
@@ -1115,30 +1128,29 @@ export function PlayersOverlay({
                 )}
               </div>
             )}
-            {/* Football helmet using SVG mask + team color + logo */}
+            {/* Football helmet — layered: color fill + logo + outline */}
             <div
               className={`carrier-dot ${isKRCarrier && !showKRLogo ? 'player-carrier-pulse' : ''}`}
               style={{
                 display: showKRLogo ? 'none' : 'block',
-                width: isKRCarrier ? 28 : helmetW,
-                height: isKRCarrier ? 22 : helmetH,
-                backgroundColor: defenseColor,
-                WebkitMaskImage: 'url(/football_helmet_outline.svg)',
-                WebkitMaskSize: 'contain',
-                WebkitMaskRepeat: 'no-repeat',
-                WebkitMaskPosition: 'center',
-                maskImage: 'url(/football_helmet_outline.svg)',
-                maskSize: 'contain',
-                maskRepeat: 'no-repeat',
-                maskPosition: 'center',
+                width: isKRCarrier ? 38 : helmetW,
+                height: isKRCarrier ? 36 : helmetH,
+                position: 'relative',
                 transform: defFacingLeft ? 'scaleX(-1)' : 'none',
                 filter: isKRCarrier
                   ? `drop-shadow(0 0 6px ${defenseColor})`
                   : `drop-shadow(0 0 3px ${defenseColor}80)`,
                 opacity: isKRCarrier ? 1.0 : 0.85,
-                position: 'relative',
               }}
             >
+              {/* Base: team color fill */}
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: defenseColor,
+                borderRadius: '45% 20% 20% 40%',
+              }} />
+              {/* Team logo — big and visible */}
               {defHelmetLogoUrl && (
                 <img
                   src={defHelmetLogoUrl}
@@ -1146,16 +1158,30 @@ export function PlayersOverlay({
                   draggable={false}
                   style={{
                     position: 'absolute',
-                    width: '60%',
-                    height: '60%',
+                    width: '70%',
+                    height: '70%',
                     top: '15%',
-                    left: '18%',
+                    left: '12%',
                     objectFit: 'contain',
-                    opacity: 0.7,
+                    opacity: 0.85,
                     transform: defFacingLeft ? 'scaleX(-1)' : 'none',
                   }}
                 />
               )}
+              {/* Helmet outline SVG on top */}
+              <img
+                src="/football_helmet_outline.svg"
+                alt=""
+                draggable={false}
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'contain',
+                  opacity: 0.4,
+                }}
+              />
             </div>
           </div>
         );

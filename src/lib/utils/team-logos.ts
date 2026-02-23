@@ -61,5 +61,5 @@ export function getTeamLogoUrl(abbreviation: string, size: 500 | 100 = 500): str
  */
 export function getTeamScoreboardLogoUrl(abbreviation: string): string {
   const espnAbbrev = ESPN_ABBREV_MAP[abbreviation] ?? abbreviation.toLowerCase();
-  return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/scoreboard/${espnAbbrev}.png&h=40&w=40`;
+  return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/scoreboard/${espnAbbrev}.png&h=96&w=96`;
 }
