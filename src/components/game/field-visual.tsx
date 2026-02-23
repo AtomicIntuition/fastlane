@@ -58,8 +58,50 @@ export function FieldVisual({
   const ballLeft = endZoneWidth + (absoluteBallPct / 100) * fieldWidth;
 
   // Previous ball position — derived from current + yardsGained (avoids timing issues)
+  // For possession-changing plays (kickoffs, punts, missed FGs, turnovers),
+  // possession has already flipped by the time we see the event, so we must
+  // compute the start position using the PRE-FLIP team's coordinate system.
   const prevBallLeft = useMemo(() => {
     if (!lastPlay) return ballLeft;
+
+    const yardToLeft = (yardLine: number, team: 'home' | 'away') => {
+      const abs = team === 'home' ? 100 - yardLine : yardLine;
+      return endZoneWidth + (Math.max(0, Math.min(100, abs)) / 100) * fieldWidth;
+    };
+
+    // Kickoffs: kicker always kicks from their own 35. Possession = receiver.
+    if (lastPlay.type === 'kickoff') {
+      const kicker = possession === 'home' ? 'away' : 'home';
+      return yardToLeft(35, kicker);
+    }
+
+    // Punts: punter's LOS = 100 - (ballPosition + |yardsGained|) from punter's perspective.
+    // Possession = receiving team (already flipped).
+    if (lastPlay.type === 'punt') {
+      const punter = possession === 'home' ? 'away' : 'home';
+      const punterYardLine = 100 - (ballPosition + Math.abs(lastPlay.yardsGained));
+      return yardToLeft(Math.max(0, Math.min(100, punterYardLine)), punter);
+    }
+
+    // Missed field goals: possession flips to defending team.
+    // Kicker's LOS = 100 - ballPosition from the kicker's perspective.
+    if (lastPlay.type === 'field_goal' && !lastPlay.scoring) {
+      const kicker = possession === 'home' ? 'away' : 'home';
+      const kickerYardLine = 100 - ballPosition;
+      return yardToLeft(Math.max(0, Math.min(100, kickerYardLine)), kicker);
+    }
+
+    // Turnovers: LOS was from the old offense's perspective.
+    // Old offense = opposite of current possession (which flipped on turnover).
+    if (lastPlay.turnover) {
+      const oldOffense = possession === 'home' ? 'away' : 'home';
+      // The ball's current position includes return yards; recover original LOS
+      const returnYards = lastPlay.turnover.returnYards ?? 0;
+      const losYardLine = 100 - (ballPosition + returnYards);
+      return yardToLeft(Math.max(0, Math.min(100, losYardLine)), oldOffense);
+    }
+
+    // Normal plays (run, pass, sack, made FG, etc.): possession hasn't changed.
     const prevYardPos = ballPosition - (possession === 'home' ? -lastPlay.yardsGained : lastPlay.yardsGained);
     const prevAbsolute = possession === 'home' ? 100 - prevYardPos : prevYardPos;
     return endZoneWidth + (Math.max(0, Math.min(100, prevAbsolute)) / 100) * fieldWidth;

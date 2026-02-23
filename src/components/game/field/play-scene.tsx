@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayResult } from '@/lib/simulation/types';
 import { getTeamLogoUrl } from '@/lib/utils/team-logos';
 import {
@@ -60,6 +60,52 @@ function easeOutCubic(t: number): number {
 
 function easeInOutQuad(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+}
+
+// ══════════════════════════════════════════════════════════════
+// LOGO IMAGE WITH REACT-BASED FALLBACK
+// ══════════════════════════════════════════════════════════════
+// Safari can fire img.onerror on initial load due to CORS/cache timing,
+// but succeed moments later. Instead of permanently replacing the DOM node
+// (which React can't recover), we track failures in state and retry on
+// each new play (when playKey changes).
+
+function LogoImg({
+  src, size, flip, playKey, opacity,
+}: {
+  src: string; size: number; flip?: boolean; playKey?: number; opacity?: number;
+}) {
+  const [failed, setFailed] = useState(false);
+  // Reset fallback state when playKey changes so the logo gets retried
+  const prevKeyRef = useRef(playKey);
+  if (playKey !== prevKeyRef.current) {
+    prevKeyRef.current = playKey;
+    if (failed) setFailed(false);
+  }
+
+  if (failed) {
+    return (
+      <span style={{ fontSize: size * 0.7, lineHeight: '1', opacity }}>{'\u{1F3C8}'}</span>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      style={{
+        objectFit: 'contain',
+        pointerEvents: 'none',
+        userSelect: 'none',
+        transform: flip ? 'scaleX(-1)' : undefined,
+        opacity,
+      }}
+      draggable={false}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -293,6 +339,7 @@ export function PlayScene({
           logoUrl={getTeamLogoUrl(activeLogo, 100)}
           borderColor={activeColor}
           flipLogo={flipLogo}
+          playKey={playKey}
         />
       )}
 
@@ -311,6 +358,7 @@ export function PlayScene({
           phase={phase}
           isTouchback={kickoffIsTouchback}
           isTD={isTD}
+          playKey={playKey}
           flipKicker={kickerFlip}
           flipReceiver={receiverFlip}
         />
@@ -377,19 +425,11 @@ export function PlayScene({
               justifyContent: 'center',
             }}
           >
-            <img
+            <LogoImg
               src={getTeamLogoUrl(activeLogo, 100)}
-              alt=""
-              width={BALL_SIZE - 10}
-              height={BALL_SIZE - 10}
-              style={{
-                objectFit: 'contain',
-                pointerEvents: 'none',
-                userSelect: 'none',
-                transform: flipLogo ? 'scaleX(-1)' : undefined,
-              }}
-              draggable={false}
-              onError={handleLogoError}
+              size={BALL_SIZE - 10}
+              flip={flipLogo}
+              playKey={playKey}
             />
           </div>
         </div>
@@ -511,7 +551,11 @@ function calculateSimpleBallX(
       return toX;
     }
     case 'field_goal': case 'extra_point': {
-      const goalPostX = possession === 'away' ? 91.66 : 8.33;
+      // For missed FGs, possession has flipped — kicker is opposite of current possession
+      const kicker = (play.type === 'field_goal' && !play.scoring)
+        ? (possession === 'home' ? 'away' : 'home')
+        : possession;
+      const goalPostX = kicker === 'away' ? 91.66 : 8.33;
       return fromX + (goalPostX - fromX) * easeInOutQuad(t);
     }
     case 'touchback':
@@ -539,6 +583,7 @@ function KickoffScene({
   phase,
   isTouchback,
   isTD,
+  playKey,
   flipKicker,
   flipReceiver,
 }: {
@@ -553,6 +598,7 @@ function KickoffScene({
   phase: Phase;
   isTouchback: boolean;
   isTD: boolean;
+  playKey: number;
   flipKicker: boolean;
   flipReceiver: boolean;
 }) {
@@ -662,19 +708,11 @@ function KickoffScene({
               justifyContent: 'center',
             }}
           >
-            <img
+            <LogoImg
               src={getTeamLogoUrl(kickerAbbrev, 100)}
-              alt=""
-              width={BALL_SIZE - 10}
-              height={BALL_SIZE - 10}
-              style={{
-                objectFit: 'contain',
-                pointerEvents: 'none',
-                userSelect: 'none',
-                transform: flipKicker ? 'scaleX(-1)' : undefined,
-              }}
-              draggable={false}
-              onError={handleLogoError}
+              size={BALL_SIZE - 10}
+              flip={flipKicker}
+              playKey={playKey}
             />
           </div>
         </div>
@@ -785,19 +823,11 @@ function KickoffScene({
             justifyContent: 'center',
           }}
         >
-          <img
+          <LogoImg
             src={getTeamLogoUrl(receiverAbbrev, 100)}
-            alt=""
-            width={BALL_SIZE - 10}
-            height={BALL_SIZE - 10}
-            style={{
-              objectFit: 'contain',
-              pointerEvents: 'none',
-              userSelect: 'none',
-              transform: flipReceiver ? 'scaleX(-1)' : undefined,
-            }}
-            draggable={false}
-            onError={handleLogoError}
+            size={BALL_SIZE - 10}
+            flip={flipReceiver}
+            playKey={playKey}
           />
         </div>
       </div>
@@ -852,7 +882,8 @@ function DecorativeArc({
   }
 
   if (playType === 'field_goal' || playType === 'extra_point') {
-    const goalX = toX > 50 ? 91.66 : 8.33;
+    // Kick goes toward the opposite end zone from where the kicker stands
+    const goalX = fromX > 50 ? 8.33 : 91.66;
     const arcH = playType === 'extra_point' ? 20 : 28;
     const midGoalX = (fromX + goalX) / 2;
     const color = isSuccess ? '#22c55e' : '#ef4444';
@@ -998,9 +1029,9 @@ function SpiralLines({ x }: { x: number }) {
 }
 
 function KickAltitudeGhost({
-  x, progress, logoUrl, borderColor, flipLogo,
+  x, progress, logoUrl, borderColor, flipLogo, playKey,
 }: {
-  x: number; progress: number; logoUrl: string; borderColor: string; flipLogo?: boolean;
+  x: number; progress: number; logoUrl: string; borderColor: string; flipLogo?: boolean; playKey?: number;
 }) {
   // Ghost rises up on a parabolic arc: peak at t=0.5
   const altitude = Math.sin(progress * Math.PI);
@@ -1033,14 +1064,12 @@ function KickAltitudeGhost({
           justifyContent: 'center',
         }}
       >
-        <img
+        <LogoImg
           src={logoUrl}
-          alt=""
-          width={BALL_SIZE * 0.8 - 8}
-          height={BALL_SIZE * 0.8 - 8}
-          style={{ objectFit: 'contain', opacity: 0.5, transform: flipLogo ? 'scaleX(-1)' : undefined }}
-          draggable={false}
-          onError={handleLogoError}
+          size={BALL_SIZE * 0.8 - 8}
+          flip={flipLogo}
+          playKey={playKey}
+          opacity={0.5}
         />
       </div>
     </div>
@@ -1105,7 +1134,11 @@ function OutcomeMarker({
     color = '#ef4444';
     size = 'lg';
   } else if (lastPlay.type === 'field_goal' || lastPlay.type === 'extra_point') {
-    const goalPostX = possession === 'away' ? 91.66 : 8.33;
+    // For missed FGs, possession has flipped — kicker is opposite of current possession
+    const kicker = (lastPlay.type === 'field_goal' && !lastPlay.scoring)
+      ? (possession === 'home' ? 'away' : 'home')
+      : possession;
+    const goalPostX = kicker === 'away' ? 91.66 : 8.33;
     text = lastPlay.scoring ? 'GOOD!' : 'NO GOOD';
     color = lastPlay.scoring ? '#22c55e' : '#ef4444';
     x = goalPostX;
@@ -1154,18 +1187,6 @@ function OutcomeMarker({
 // HELPERS
 // ══════════════════════════════════════════════════════════════
 
-/** Replace broken logo img with football emoji */
-function handleLogoError(e: SyntheticEvent<HTMLImageElement>) {
-  const img = e.currentTarget;
-  const parent = img.parentElement;
-  if (parent) {
-    const span = document.createElement('span');
-    span.textContent = '\u{1F3C8}';
-    span.style.fontSize = `${img.width * 0.7}px`;
-    span.style.lineHeight = '1';
-    parent.replaceChild(span, img);
-  }
-}
 
 function isFailedPlay(play: PlayResult): boolean {
   if (play.type === 'pass_incomplete') return true;
