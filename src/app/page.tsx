@@ -471,6 +471,7 @@ export default async function HomePage() {
                             teamName={g.homeTeam?.name ?? undefined}
                             size={24}
                             className="w-6 h-6 object-contain shrink-0"
+                            style={{ transform: 'scaleX(-1)' }}
                           />
                         </div>
                       </div>
@@ -753,6 +754,7 @@ function LiveGameHero({ game }: { game: GameCardData }) {
                 teamName={game.homeTeam?.name ?? undefined}
                 size={80}
                 className="w-full h-full object-contain drop-shadow-lg"
+                style={{ transform: 'scaleX(-1)' }}
               />
             </div>
             <p className="text-xs sm:text-sm text-text-secondary">
@@ -846,6 +848,7 @@ function IntermissionHero({
                     teamName={nextGame.homeTeam?.name ?? undefined}
                     size={80}
                     className="w-full h-full object-contain drop-shadow-lg"
+                    style={{ transform: 'scaleX(-1)' }}
                   />
                 </div>
                 <p className="text-xs sm:text-sm text-text-secondary">
@@ -913,6 +916,7 @@ function IntermissionHero({
                 teamName={completedGame.homeTeam?.name ?? undefined}
                 size={28}
                 className="w-7 h-7 object-contain shrink-0"
+                style={{ transform: 'scaleX(-1)' }}
               />
               <span className="text-xs font-bold">
                 {completedGame.homeTeam?.abbreviation ?? '???'}
@@ -990,6 +994,7 @@ function NextGameHero({ game }: { game: GameCardData }) {
                 teamName={game.homeTeam?.name ?? undefined}
                 size={80}
                 className="w-full h-full object-contain drop-shadow-lg"
+                style={{ transform: 'scaleX(-1)' }}
               />
             </div>
             <p className="text-xs sm:text-sm text-text-secondary">
@@ -1077,6 +1082,7 @@ function WeekBreakHero({
                     teamName={g.homeTeam?.name ?? undefined}
                     size={24}
                     className="w-6 h-6 object-contain shrink-0"
+                    style={{ transform: 'scaleX(-1)' }}
                   />
                 </div>
               </div>

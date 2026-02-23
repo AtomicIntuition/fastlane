@@ -9,6 +9,8 @@ import type {
   StreamMessage,
 } from '@/lib/simulation/types';
 
+export type BreakType = 'quarter_1_end' | 'halftime' | 'quarter_3_end' | 'two_minute_warning' | null;
+
 interface GameStreamState {
   events: GameEvent[];
   currentEvent: GameEvent | null;
@@ -21,6 +23,7 @@ interface GameStreamState {
   intermissionMessage: string | null;
   intermissionCountdown: number;
   nextGameId: string | null;
+  pendingBreak: BreakType;
 }
 
 const INITIAL_STATE: GameStreamState = {
@@ -35,6 +38,7 @@ const INITIAL_STATE: GameStreamState = {
   intermissionMessage: null,
   intermissionCountdown: 0,
   nextGameId: null,
+  pendingBreak: null,
 };
 
 const MAX_RECONNECT_DELAY = 30000;
@@ -56,6 +60,13 @@ export function useGameStream(gameId: string | null): GameStreamState & {
   const pauseRef = useRef(false);
   const pauseQueueRef = useRef<GameEvent[]>([]);
 
+  // Break detection refs — track last RENDERED quarter/clock so we can
+  // intercept quarter-crossing events BEFORE they paint to the UI.
+  const lastRenderedQuarterRef = useRef<number | 'OT' | null>(null);
+  const lastRenderedClockRef = useRef<number | null>(null);
+  const breakBufferRef = useRef<GameEvent | null>(null);
+  const breaksShownRef = useRef<Set<string>>(new Set());
+
   const clearTimers = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
@@ -67,25 +78,102 @@ export function useGameStream(gameId: string | null): GameStreamState & {
     }
   }, []);
 
+  /**
+   * Detect if an incoming event crosses a quarter boundary or 2-minute warning
+   * relative to the last rendered state. Returns the break type or null.
+   */
+  const detectBreak = useCallback((event: GameEvent): BreakType => {
+    const prevQ = lastRenderedQuarterRef.current;
+    const prevClock = lastRenderedClockRef.current;
+    const newQ = event.gameState.quarter;
+
+    // No previous state to compare against (first event)
+    if (prevQ === null) return null;
+
+    // Quarter transitions
+    if (typeof prevQ === 'number' && typeof newQ === 'number') {
+      // Q1 → Q2
+      if (prevQ === 1 && newQ === 2 && !breaksShownRef.current.has('quarter_1_end')) {
+        breaksShownRef.current.add('quarter_1_end');
+        return 'quarter_1_end';
+      }
+      // Q2 → Q3 (halftime)
+      if (prevQ === 2 && newQ === 3 && !breaksShownRef.current.has('halftime')) {
+        breaksShownRef.current.add('halftime');
+        return 'halftime';
+      }
+      // Q3 → Q4
+      if (prevQ === 3 && newQ === 4 && !breaksShownRef.current.has('quarter_3_end')) {
+        breaksShownRef.current.add('quarter_3_end');
+        return 'quarter_3_end';
+      }
+    }
+
+    // Two-minute warning: Q4, clock crossed 120s
+    if (
+      typeof newQ === 'number' && newQ === 4 &&
+      typeof prevClock === 'number' && prevClock > 120 &&
+      event.gameState.clock <= 120 &&
+      !breaksShownRef.current.has('two_minute_warning')
+    ) {
+      breaksShownRef.current.add('two_minute_warning');
+      return 'two_minute_warning';
+    }
+
+    return null;
+  }, []);
+
+  /**
+   * Apply an event to state and update tracking refs.
+   */
+  const applyEvent = useCallback((event: GameEvent) => {
+    lastRenderedQuarterRef.current = event.gameState.quarter;
+    lastRenderedClockRef.current = event.gameState.clock;
+    setState((prev) => ({
+      ...prev,
+      events: [...prev.events, event],
+      currentEvent: event,
+      gameState: event.gameState,
+      status: 'live',
+    }));
+  }, []);
+
+  /**
+   * Try to render an event, intercepting it if it triggers a break.
+   * Returns true if the event was held back (break triggered).
+   */
+  const tryRenderEvent = useCallback((event: GameEvent): boolean => {
+    const breakType = detectBreak(event);
+    if (breakType) {
+      // Hold this event — don't render it yet
+      breakBufferRef.current = event;
+      pauseRef.current = true;
+      setState((prev) => ({ ...prev, pendingBreak: breakType }));
+      return true; // event was intercepted
+    }
+    // No break — render normally
+    applyEvent(event);
+    return false;
+  }, [detectBreak, applyEvent]);
+
   const processPlaybackQueue = useCallback(() => {
     if (playbackQueueRef.current.length === 0) return;
 
     const nextEvent = playbackQueueRef.current.shift()!;
 
-    setState((prev) => ({
-      ...prev,
-      events: [...prev.events, nextEvent],
-      currentEvent: nextEvent,
-      gameState: nextEvent.gameState,
-      status: 'live',
-    }));
+    // Check for break before rendering
+    const intercepted = tryRenderEvent(nextEvent);
+    if (intercepted) {
+      // Event held — remaining queue stays in playbackQueueRef
+      return;
+    }
 
     // Schedule next event playback with timing based on play type
     if (playbackQueueRef.current.length > 0) {
       const delay = getPlaybackDelay(nextEvent);
       playbackTimerRef.current = setTimeout(processPlaybackQueue, delay);
     }
-  }, []);
+  }, [tryRenderEvent]);
 
   const connect = useCallback(() => {
     if (!gameId) return;
@@ -122,10 +210,26 @@ export function useGameStream(gameId: string | null): GameStreamState & {
           case 'catchup': {
             isCatchingUpRef.current = true;
             // Apply all catchup events immediately without animation delay
+            // Set tracking refs from the final catchup event — skip break detection
+            const lastCatchupEvent = message.events[message.events.length - 1] ?? null;
+            if (lastCatchupEvent) {
+              lastRenderedQuarterRef.current = lastCatchupEvent.gameState.quarter;
+              lastRenderedClockRef.current = lastCatchupEvent.gameState.clock;
+              // Mark all breaks up to this point as shown
+              const q = lastCatchupEvent.gameState.quarter;
+              if (typeof q === 'number') {
+                if (q >= 2) breaksShownRef.current.add('quarter_1_end');
+                if (q >= 3) breaksShownRef.current.add('halftime');
+                if (q >= 4) breaksShownRef.current.add('quarter_3_end');
+                if (q === 4 && lastCatchupEvent.gameState.clock <= 120) {
+                  breaksShownRef.current.add('two_minute_warning');
+                }
+              }
+            }
             setState((prev) => ({
               ...prev,
               events: message.events,
-              currentEvent: message.events[message.events.length - 1] ?? null,
+              currentEvent: lastCatchupEvent,
               gameState: message.gameState,
               status: 'catchup',
             }));
@@ -142,7 +246,7 @@ export function useGameStream(gameId: string | null): GameStreamState & {
 
           case 'play': {
             if (pauseRef.current) {
-              // Paused — buffer events for later
+              // Paused (either user-initiated or break-initiated) — buffer events for later
               pauseQueueRef.current.push(message.event);
             } else if (isCatchingUpRef.current) {
               // Still catching up -- queue this play
@@ -151,14 +255,8 @@ export function useGameStream(gameId: string | null): GameStreamState & {
               // There are queued plays, add to queue
               playbackQueueRef.current.push(message.event);
             } else {
-              // Immediately display the play
-              setState((prev) => ({
-                ...prev,
-                events: [...prev.events, message.event],
-                currentEvent: message.event,
-                gameState: message.event.gameState,
-                status: 'live',
-              }));
+              // Try to immediately display the play (may be intercepted for break)
+              tryRenderEvent(message.event);
             }
             break;
           }
@@ -174,6 +272,7 @@ export function useGameStream(gameId: string | null): GameStreamState & {
               finalScore: message.finalScore,
               mvp: message.mvp,
               status: 'game_over',
+              pendingBreak: null, // clear any pending break
             }));
             break;
           }
@@ -255,7 +354,7 @@ export function useGameStream(gameId: string | null): GameStreamState & {
         };
       });
     };
-  }, [gameId, clearTimers]);
+  }, [gameId, clearTimers, tryRenderEvent]);
 
   const reconnect = useCallback(() => {
     reconnectAttemptRef.current = 0;
@@ -267,6 +366,15 @@ export function useGameStream(gameId: string | null): GameStreamState & {
   }, []);
 
   const resume = useCallback(() => {
+    // If there's a buffered break event, flush it to state first
+    if (breakBufferRef.current) {
+      applyEvent(breakBufferRef.current);
+      breakBufferRef.current = null;
+    }
+
+    // Clear pending break
+    setState((prev) => ({ ...prev, pendingBreak: null }));
+
     pauseRef.current = false;
     // Move buffered events into the playback queue and drain them
     if (pauseQueueRef.current.length > 0) {
@@ -276,7 +384,7 @@ export function useGameStream(gameId: string | null): GameStreamState & {
         processPlaybackQueue();
       }
     }
-  }, [processPlaybackQueue]);
+  }, [processPlaybackQueue, applyEvent]);
 
   // Connect on mount / gameId change
   useEffect(() => {
@@ -292,6 +400,10 @@ export function useGameStream(gameId: string | null): GameStreamState & {
     pauseRef.current = false;
     isCatchingUpRef.current = false;
     isReconnectingRef.current = false;
+    lastRenderedQuarterRef.current = null;
+    lastRenderedClockRef.current = null;
+    breakBufferRef.current = null;
+    breaksShownRef.current = new Set();
 
     connect();
 

@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { NarrativeSnapshot, GameState } from '@/lib/simulation/types';
-import { useGameStream } from '@/hooks/use-game-stream';
+import { useGameStream, type BreakType } from '@/hooks/use-game-stream';
 import { useMomentum } from '@/hooks/use-momentum';
 import { useDynamicTab } from '@/hooks/use-dynamic-tab';
 import { useProceduralAudio } from '@/hooks/use-procedural-audio';
@@ -46,6 +46,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
     reconnect,
     pause,
     resume,
+    pendingBreak,
   } = useGameStream(gameId);
 
   const { momentum } = useMomentum(events);
@@ -129,46 +130,11 @@ export function GameViewer({ gameId }: GameViewerProps) {
     return gameState.ballPosition;
   }, [events, gameState]);
 
-  // Detect halftime: current quarter is 3 but the last event is still from Q2
-  // or the engine set isHalftime. Show halftime report for 45 seconds.
-  const [showHalftime, setShowHalftime] = useState(false);
-  const halftimeShownRef = useRef(false);
-
-  useEffect(() => {
-    if (!currentEvent || !gameState || halftimeShownRef.current) return;
-
-    // Detect halftime transition: previous event was Q2, current state is Q3
-    const isHalftimeNow =
-      gameState.quarter === 3 &&
-      events.length >= 2 &&
-      events[events.length - 2]?.gameState.quarter === 2;
-
-    if (isHalftimeNow) {
-      halftimeShownRef.current = true;
-      setShowHalftime(true);
-      pause(); // Pause event stream during halftime
-    }
-  }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Detect 2-minute warning in Q4
-  const [showTwoMinWarning, setShowTwoMinWarning] = useState(false);
-  const twoMinWarningShownRef = useRef(false);
-
-  useEffect(() => {
-    if (!currentEvent || !gameState || twoMinWarningShownRef.current) return;
-    if (events.length < 2) return;
-
-    const prevClock = events[events.length - 2]?.gameState.clock;
-    const curClock = gameState.clock;
-    const curQuarter = gameState.quarter;
-
-    // Q4, clock just crossed 120s (2:00)
-    if (curQuarter === 4 && typeof prevClock === 'number' && prevClock > 120 && curClock <= 120) {
-      twoMinWarningShownRef.current = true;
-      setShowTwoMinWarning(true);
-      pause(); // Pause event stream during 2-minute warning
-    }
-  }, [currentEvent?.eventNumber, gameState?.quarter, gameState?.clock]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Derive break overlay visibility from pendingBreak (set in use-game-stream)
+  const showHalftime = pendingBreak === 'halftime';
+  const showQuarterBreak = pendingBreak === 'quarter_1_end' || pendingBreak === 'quarter_3_end';
+  const showTwoMinWarning = pendingBreak === 'two_minute_warning';
+  const quarterBreakNumber: 1 | 3 = pendingBreak === 'quarter_3_end' ? 3 : 1;
 
   // Delay commentary so text appears during play development, not at pre-snap.
   // Non-play events (kickoff, coin_toss, touchback, pregame) skip the delay.
@@ -209,33 +175,6 @@ export function GameViewer({ gameId }: GameViewerProps) {
     return () => clearTimeout(timer);
   }, [currentEvent?.eventNumber]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Detect quarter breaks: Q1→Q2 and Q3→Q4 transitions
-  const [showQuarterBreak, setShowQuarterBreak] = useState(false);
-  const [quarterBreakNumber, setQuarterBreakNumber] = useState<1 | 3>(1);
-  const quarterBreaksShownRef = useRef<Set<number>>(new Set());
-
-  useEffect(() => {
-    if (!currentEvent || !gameState || events.length < 2) return;
-
-    const prevQuarter = events[events.length - 2]?.gameState.quarter;
-    const curQuarter = gameState.quarter;
-
-    // Q1→Q2 transition
-    if (curQuarter === 2 && prevQuarter === 1 && !quarterBreaksShownRef.current.has(1)) {
-      quarterBreaksShownRef.current.add(1);
-      setQuarterBreakNumber(1);
-      setShowQuarterBreak(true);
-      pause(); // Pause event stream during quarter break
-    }
-
-    // Q3→Q4 transition
-    if (curQuarter === 4 && prevQuarter === 3 && !quarterBreaksShownRef.current.has(3)) {
-      quarterBreaksShownRef.current.add(3);
-      setQuarterBreakNumber(3);
-      setShowQuarterBreak(true);
-      pause(); // Pause event stream during quarter break
-    }
-  }, [currentEvent?.eventNumber, gameState?.quarter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Connecting / Error state ──────────────────────────────
 
@@ -359,6 +298,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
               driveStartPosition={driveStartPosition}
               narrativeContext={currentEvent?.narrativeContext ?? null}
               commentary={delayedCommentary}
+              weather={gameState.weather}
             />
           </div>
 
@@ -394,6 +334,16 @@ export function GameViewer({ gameId }: GameViewerProps) {
                 compact
               />
             )}
+
+            {/* Team stats — on desktop shown under drive, on mobile stays in flow */}
+            <div className="flex-shrink-0">
+              <BetweenPlayInsight
+                gameState={gameState}
+                events={events}
+                currentEvent={currentEvent}
+                activeBoxScore={activeBoxScore}
+              />
+            </div>
           </div>
         </div>
 
@@ -402,16 +352,6 @@ export function GameViewer({ gameId }: GameViewerProps) {
           {/* Live commentary */}
           <div className="flex-shrink-0">
             <LiveCommentary event={currentEvent} />
-          </div>
-
-          {/* Between-play insights — rotates through contextual info */}
-          <div className="flex-shrink-0">
-            <BetweenPlayInsight
-              gameState={gameState}
-              events={events}
-              currentEvent={currentEvent}
-              activeBoxScore={activeBoxScore}
-            />
           </div>
 
           {/* Narrative tags */}
@@ -445,7 +385,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
           awayTeam={gameState.awayTeam}
           homeScore={gameState.homeScore}
           awayScore={gameState.awayScore}
-          onDismiss={() => { setShowHalftime(false); resume(); }}
+          onDismiss={resume}
         />
       )}
 
@@ -458,7 +398,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
           homeScore={gameState.homeScore}
           awayScore={gameState.awayScore}
           boxScore={activeBoxScore}
-          onDismiss={() => { setShowQuarterBreak(false); resume(); }}
+          onDismiss={resume}
         />
       )}
 
@@ -470,7 +410,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
           homeScore={gameState.homeScore}
           awayScore={gameState.awayScore}
           boxScore={activeBoxScore}
-          onDismiss={() => { setShowTwoMinWarning(false); resume(); }}
+          onDismiss={resume}
         />
       )}
     </div>

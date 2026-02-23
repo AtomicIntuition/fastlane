@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import type { PlayResult, NarrativeSnapshot } from '@/lib/simulation/types';
+import type { PlayResult, NarrativeSnapshot, WeatherConditions } from '@/lib/simulation/types';
 import { FieldSurface } from './field/field-surface';
+import { WeatherOverlay } from './field/weather-overlay';
 import { DownDistanceOverlay } from './field/down-distance-overlay';
 import { PlayScene } from './field/play-scene';
 import { CoinFlip } from './field/coin-flip';
@@ -31,6 +32,7 @@ interface FieldVisualProps {
   driveStartPosition: number;
   narrativeContext: NarrativeSnapshot | null;
   commentary?: { playByPlay: string; crowdReaction: string; excitement: number } | null;
+  weather?: WeatherConditions | null;
 }
 
 export function FieldVisual({
@@ -47,6 +49,7 @@ export function FieldVisual({
   gameStatus,
   driveStartPosition,
   commentary,
+  weather,
 }: FieldVisualProps) {
   // ── Ball position math ──────────────────────────────────
   const endZoneWidth = 8.33;
@@ -211,6 +214,9 @@ export function FieldVisual({
       >
         {/* z-0: Green field background */}
         <FieldSurface homeTeam={homeTeam} awayTeam={awayTeam} possession={possession} />
+
+        {/* z-2: Weather effects (rain, snow, fog, wind) */}
+        <WeatherOverlay weather={weather} />
 
         {/* z-6: Down & distance overlay (LOS, FD line, badge) */}
         {showOverlays && !isKickoff && !isPatAttempt && gameStatus === 'live' && (

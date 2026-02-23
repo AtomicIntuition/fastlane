@@ -6,6 +6,7 @@ interface TeamLogoProps {
   teamName?: string;
   size?: number;
   className?: string;
+  style?: React.CSSProperties;
 }
 
 export function TeamLogo({
@@ -13,6 +14,7 @@ export function TeamLogo({
   teamName,
   size = 64,
   className = '',
+  style,
 }: TeamLogoProps) {
   return (
     <Image
@@ -21,6 +23,7 @@ export function TeamLogo({
       width={size}
       height={size}
       className={className}
+      style={style}
       unoptimized
     />
   );
