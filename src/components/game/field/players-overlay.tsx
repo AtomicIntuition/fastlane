@@ -932,8 +932,8 @@ export function PlayersOverlay({
         const role = pos.role || 'OFF';
         const isOL = role === 'C' || role === 'LG' || role === 'RG' || role === 'LT' || role === 'RT';
         const isQB = role === 'QB';
-        const helmetW = isOL ? 32 : isCarrier ? 38 : (isQB ? 30 : 28);
-        const helmetH = isOL ? 30 : isCarrier ? 36 : (isQB ? 28 : 26);
+        const helmetW = isOL ? 24 : isCarrier ? 28 : (isQB ? 22 : 20);
+        const helmetH = isOL ? 18 : isCarrier ? 22 : (isQB ? 17 : 15);
         const staggerDelay = phase === 'pre_snap' ? (isOL ? '0ms' : isQB ? '80ms' : '150ms') : '0ms';
         return (
           <div
@@ -993,7 +993,7 @@ export function PlayersOverlay({
               }}
             >
               {/* Helmet shell */}
-              <path d="M3,2 C1,3 0,6 0,10 C0,14 1,17 3,18 L17,18 C20,17 22,14 22,12 L22,8 C22,6 20,3 17,2 Z" fill={offenseColor} />
+              <path d="M4,3 C2,4 0,7 0,10 C0,14 1,17 3,18 L17,18 C20,17 22,14 22,11 L22,8 C22,5 20,3 17,2 C13,0 8,0 4,3 Z" fill={offenseColor} />
               {/* Facemask */}
               <rect x="19" y="5" width="7" height="10" rx="1.5" fill="rgba(60,60,60,0.8)" />
               <line x1="19.5" y1="7.5" x2="26" y2="7.5" stroke="rgba(200,200,200,0.7)" strokeWidth="1.2" />
@@ -1035,8 +1035,8 @@ export function PlayersOverlay({
         const isDL = role === 'DE' || role === 'DT' || role === 'NT';
         const isDB = role === 'CB' || role === 'NCB' || role === 'S';
         const isKR = role === 'KR';
-        const helmetW = isDL ? 32 : isDB ? 26 : 28;
-        const helmetH = isDL ? 30 : isDB ? 24 : 26;
+        const helmetW = isDL ? 24 : isDB ? 18 : 20;
+        const helmetH = isDL ? 18 : isDB ? 14 : 15;
         const isKRCarrier = cs.carrierMode === 'kickoff_return' && i === cs.receiverIdx && carrierTransferredRef.current;
         const showKRLogo = isKRCarrier && (phase === 'development' || phase === 'result');
         const krLogoUrl = isKR && cs.carrierMode === 'kickoff_return' && opposingTeamAbbreviation
@@ -1101,8 +1101,8 @@ export function PlayersOverlay({
             <svg
               className={`carrier-dot ${isKRCarrier && !showKRLogo ? 'player-carrier-pulse' : ''}`}
               viewBox="0 0 28 20"
-              width={isKRCarrier ? 38 : helmetW}
-              height={isKRCarrier ? 36 : helmetH}
+              width={isKRCarrier ? 28 : helmetW}
+              height={isKRCarrier ? 22 : helmetH}
               style={{
                 display: showKRLogo ? 'none' : 'block',
                 transform: defFacingLeft ? 'scaleX(-1)' : 'none',
@@ -1112,7 +1112,7 @@ export function PlayersOverlay({
                 opacity: isKRCarrier ? 1.0 : 0.85,
               }}
             >
-              <path d="M3,2 C1,3 0,6 0,10 C0,14 1,17 3,18 L17,18 C20,17 22,14 22,12 L22,8 C22,6 20,3 17,2 Z" fill={defenseColor} />
+              <path d="M4,3 C2,4 0,7 0,10 C0,14 1,17 3,18 L17,18 C20,17 22,14 22,11 L22,8 C22,5 20,3 17,2 C13,0 8,0 4,3 Z" fill={defenseColor} />
               <rect x="19" y="5" width="7" height="10" rx="1.5" fill="rgba(60,60,60,0.8)" />
               <line x1="19.5" y1="7.5" x2="26" y2="7.5" stroke="rgba(200,200,200,0.7)" strokeWidth="1.2" />
               <line x1="19.5" y1="10" x2="26" y2="10" stroke="rgba(200,200,200,0.7)" strokeWidth="1.2" />
