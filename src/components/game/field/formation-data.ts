@@ -222,35 +222,40 @@ export const DEFENSIVE_FORMATIONS: Record<string, PlayerPosition[]> = {
 // ══════════════════════════════════════════════════════════════
 
 export const SPECIAL_TEAMS = {
+  // Dynamic Kickoff (2025 Rule 6):
+  //   Kicker alone at A35 (dx=0)
+  //   10 coverage players clustered at B40 (dx=-5, tight line)
+  //   Receiving setup zone at B30-B35 (dx=31-35)
+  //   Returner(s) deep in landing zone B0-B20 (dx=40)
+  //   Both teams hold until ball hits ground or is touched.
   kickoff: {
     kicking: [
       { dx: 0, dy: 0, role: 'K' },
-      // Coverage team — staggered depths for realism
-      { dx: -1.0, dy: -28, role: 'COV' },
-      { dx: -1.8, dy: -20, role: 'COV' },
-      { dx: -1.2, dy: -12, role: 'COV' },
-      { dx: -1.6, dy: -5, role: 'COV' },
-      { dx: -1.6, dy: 5, role: 'COV' },
-      { dx: -1.2, dy: 12, role: 'COV' },
-      { dx: -1.8, dy: 20, role: 'COV' },
-      { dx: -1.0, dy: 28, role: 'COV' },
-      { dx: -1.4, dy: -36, role: 'COV' },
-      { dx: -1.4, dy: 36, role: 'COV' },
+      // Coverage team — clustered at opponent's 40 (dx=-5), tight line
+      { dx: -5, dy: -24, role: 'COV' },
+      { dx: -5, dy: -18, role: 'COV' },
+      { dx: -5, dy: -12, role: 'COV' },
+      { dx: -5, dy: -6, role: 'COV' },
+      { dx: -5, dy: 0, role: 'COV' },
+      { dx: -5, dy: 6, role: 'COV' },
+      { dx: -5, dy: 12, role: 'COV' },
+      { dx: -5, dy: 18, role: 'COV' },
+      { dx: -5, dy: 24, role: 'COV' },
+      { dx: -5, dy: -30, role: 'COV' },
     ] as PlayerPosition[],
     receiving: [
-      { dx: 40, dy: 0, role: 'KR' },
-      // Wedge blockers — form up ahead of returner
-      { dx: 33, dy: -4, role: 'WDG' },
-      { dx: 33, dy: 4, role: 'WDG' },
-      { dx: 31, dy: 0, role: 'WDG' },
-      // Front line blockers
-      { dx: 20, dy: -18, role: 'BLK' },
-      { dx: 20, dy: 18, role: 'BLK' },
-      { dx: 15, dy: -10, role: 'BLK' },
-      { dx: 15, dy: 10, role: 'BLK' },
-      { dx: 10, dy: -22, role: 'BLK' },
-      { dx: 10, dy: 22, role: 'BLK' },
-      { dx: 10, dy: 0, role: 'BLK' },
+      { dx: 40, dy: 0, role: 'KR' },       // Returner deep in landing zone
+      // Setup zone players at B30-B35 (dx=31-35), clustered
+      { dx: 32, dy: -22, role: 'SET' },
+      { dx: 32, dy: -14, role: 'SET' },
+      { dx: 32, dy: -6, role: 'SET' },
+      { dx: 33, dy: 2, role: 'SET' },
+      { dx: 33, dy: 10, role: 'SET' },
+      { dx: 32, dy: 18, role: 'SET' },
+      { dx: 34, dy: -18, role: 'SET' },
+      { dx: 34, dy: -2, role: 'SET' },
+      { dx: 34, dy: 14, role: 'SET' },
+      { dx: 34, dy: 24, role: 'SET' },
     ] as PlayerPosition[],
   },
   punt: {

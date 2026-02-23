@@ -131,7 +131,7 @@ describe('Special Teams', () => {
       }
 
       const rate = touchbacks / trials;
-      // TOUCHBACK_RATE constant is 0.40; allow statistical variance
+      // Combined touchback rate ~37% (28% endzone + 7% bounce + 2% short); allow variance
       expect(rate).toBeGreaterThan(0.28);
       expect(rate).toBeLessThan(0.55);
     });

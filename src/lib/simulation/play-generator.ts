@@ -46,7 +46,7 @@ import {
   PUNT_RETURN_STDDEV,
   FAIR_CATCH_RATE,
   SACK_RATE,
-  TOUCHBACK_RATE,
+  DYNAMIC_KICKOFF_TOUCHBACK_ENDZONE_RATE,
   TWO_POINT_CONVERSION_RATE,
   getFieldGoalAccuracy,
 } from './constants';
@@ -1479,11 +1479,11 @@ function resolveKickoff(
 
   const kicker = getPlayerByPosition(offensePlayers, 'K');
 
-  if (rng.probability(TOUCHBACK_RATE)) {
-    // Touchback
+  if (rng.probability(DYNAMIC_KICKOFF_TOUCHBACK_ENDZONE_RATE)) {
+    // End-zone touchback (Dynamic Kickoff 2025 rules — ball at 35)
     result.yardsGained = 0;
     const kickerName = kicker ? formatName(kicker) : 'Kickoff';
-    result.description = `${kickerName} kicks it deep. Touchback. Ball at the 25-yard line`;
+    result.description = `${kickerName} kicks it deep. Touchback. Ball at the 35-yard line`;
     result.clockElapsed = resolveClockElapsed('kickoff', rng, false);
     return result;
   }

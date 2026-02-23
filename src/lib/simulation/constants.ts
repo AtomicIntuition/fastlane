@@ -92,12 +92,31 @@ export const MUFFED_PUNT_RATE = 0.02;
 // SPECIAL TEAMS
 // ============================================================================
 
-/** ~40% of kickoffs result in a touchback (real NFL ~35-40%) */
-export const TOUCHBACK_RATE = 0.40;
+// --- Dynamic Kickoff (2025 Rule 6) ---
+// Tiered touchback system replaces the old flat touchback rate.
+// Ball must land in the landing zone (B0–B20) or end zone.
 
-/** Average kickoff return distance in yards */
-export const KICKOFF_RETURN_MEAN = 23.0;
-export const KICKOFF_RETURN_STDDEV = 12.0;
+/** Ball into end zone → touchback at B35 (~28% of kickoffs) */
+export const DYNAMIC_KICKOFF_TOUCHBACK_ENDZONE_RATE = 0.28;
+
+/** Ball lands in landing zone, bounces into end zone → touchback at B20 (~7%) */
+export const DYNAMIC_KICKOFF_TOUCHBACK_BOUNCE_RATE = 0.07;
+
+/** Short kick (before landing zone) → dead ball at B40 (~2%) */
+export const DYNAMIC_KICKOFF_SHORT_KICK_RATE = 0.02;
+
+/** Deep touchback spotted at the 35 (end zone touchback) */
+export const DYNAMIC_KICKOFF_ENDZONE_TOUCHBACK_POSITION = 35;
+
+/** Bounce-through touchback spotted at the 20 */
+export const DYNAMIC_KICKOFF_BOUNCE_TOUCHBACK_POSITION = 20;
+
+/** Short kick dead ball spotted at the 40 */
+export const DYNAMIC_KICKOFF_SHORT_KICK_POSITION = 40;
+
+/** Average kickoff return distance in yards (slightly higher under Dynamic Kickoff) */
+export const KICKOFF_RETURN_MEAN = 26.0;
+export const KICKOFF_RETURN_STDDEV = 10.0;
 
 /** Probability of a kickoff return touchdown on live returns (~0.5%) */
 export const KICKOFF_RETURN_TD_RATE = 0.005;
@@ -113,8 +132,7 @@ export const PUNT_RETURN_STDDEV = 5.0;
 /** ~55% of catchable punts result in a fair catch */
 export const FAIR_CATCH_RATE = 0.55;
 
-/** ~15% chance of fair catch on kickoff returns (ball dead at catch spot) */
-export const KICKOFF_FAIR_CATCH_RATE = 0.15;
+// (Fair catch eliminated under Dynamic Kickoff rules — no KICKOFF_FAIR_CATCH_RATE)
 
 /**
  * Field goal accuracy by distance range.
@@ -650,7 +668,7 @@ export const RED_ZONE = 80;
  */
 export const FIELD_GOAL_RANGE = 63;
 
-/** Ball placed at own 25-yard line after a kickoff touchback (post-2016 rule) */
+/** Legacy kickoff touchback position (pre-2025 rule fallback) */
 export const TOUCHBACK_POSITION = 25;
 
 /** Ball placed at own 20-yard line after a punt touchback */

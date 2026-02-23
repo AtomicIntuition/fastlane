@@ -20,6 +20,24 @@
 import { GameState, GameType, SeededRNG } from './types';
 
 // ============================================================================
+// OT HELPERS
+// ============================================================================
+
+/** Returns the correct overtime period length based on game type per Rule 16. */
+export function getOvertimePeriodLength(gameType: GameType): number {
+  // Rule 16-1-3: Regular season OT = one 10-minute period (600s)
+  // Rule 16-1-4: Playoff OT = 15-minute periods (900s)
+  return gameType === 'regular' ? 600 : 900;
+}
+
+/** Returns the correct number of timeouts per team in OT per Rule 16. */
+export function getOvertimeTimeouts(gameType: GameType): number {
+  // Rule 16-1-3(e): Regular season OT = 2 timeouts per team
+  // Rule 16-1-4(g): Playoff OT = 3 timeouts per team
+  return gameType === 'regular' ? 2 : 3;
+}
+
+// ============================================================================
 // OVERTIME STATE TYPE
 // ============================================================================
 
@@ -52,14 +70,8 @@ export interface OvertimeState {
 }
 
 // ============================================================================
-// OT CONSTANTS
+// OT CONSTANTS (legacy defaults — use getOvertimePeriodLength/getOvertimeTimeouts)
 // ============================================================================
-
-/** Overtime period length: 10 minutes = 600 seconds. */
-const OT_PERIOD_LENGTH = 600;
-
-/** Each team gets 2 timeouts in overtime. */
-const OT_TIMEOUTS = 2;
 
 // ============================================================================
 // INITIALIZATION
@@ -240,17 +252,20 @@ export function updateOvertimeState(
 /**
  * Build the initial game state for an overtime period.
  *
- * Resets the clock to 10 minutes, awards 2 timeouts per team,
+ * Resets the clock based on game type (10 min regular, 15 min playoff per Rule 16),
+ * awards correct timeouts per team (2 regular, 3 playoff per Rule 16),
  * disables the two-minute warning, and sets up the kickoff.
  * Possession is determined by the coin toss result.
  *
  * @param state - The current game state (end of regulation or previous OT).
  * @param otState - The initialized overtime state with coin toss results.
+ * @param gameType - The game type (regular, wild_card, divisional, etc.).
  * @returns A new GameState configured for the start of overtime.
  */
 export function createOvertimeGameState(
   state: GameState,
-  otState: OvertimeState
+  otState: OvertimeState,
+  gameType: GameType = 'regular'
 ): GameState {
   // Determine which team receives the OT kickoff
   const receivingTeam = determineReceivingTeam(otState);
@@ -258,17 +273,20 @@ export function createOvertimeGameState(
   const kickingTeam: 'home' | 'away' =
     receivingTeam === 'home' ? 'away' : 'home';
 
+  const otPeriodLength = getOvertimePeriodLength(gameType);
+  const otTimeouts = getOvertimeTimeouts(gameType);
+
   return {
     ...state,
     quarter: 'OT',
-    clock: OT_PERIOD_LENGTH,
+    clock: otPeriodLength,
     playClock: 40,
     possession: kickingTeam, // kicking team "has the ball" for the kickoff
     down: 1,
     yardsToGo: 10,
     ballPosition: 35, // kickoff from the 35
-    homeTimeouts: OT_TIMEOUTS,
-    awayTimeouts: OT_TIMEOUTS,
+    homeTimeouts: otTimeouts,
+    awayTimeouts: otTimeouts,
     isClockRunning: false,
     twoMinuteWarning: true, // Set to true to prevent it from triggering (no 2MW in OT)
     isHalftime: false,
@@ -339,8 +357,8 @@ export function buildCoinTossDescription(
 export function buildAdditionalOTPeriodDescription(): string {
   return (
     'The overtime period has expired with the score STILL TIED! ' +
-    'In the playoffs, we keep going. Another overtime period is coming up. ' +
-    'Both teams reset with 2 timeouts. This one is going the distance!'
+    'In the playoffs, we keep going. Another 15-minute overtime period is coming up. ' +
+    'Both teams reset with 3 timeouts. This one is going the distance!'
   );
 }
 

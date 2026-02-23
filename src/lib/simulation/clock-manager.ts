@@ -13,7 +13,11 @@ import { QUARTER_LENGTH, TWO_MINUTE_WARNING, CLOCK_TIME, PLAY_CLOCK } from './co
 // Constants
 // ============================================================================
 
-/** Overtime period length: 10 minutes = 600 seconds */
+/** Default overtime period length: 10 minutes = 600 seconds (regular season).
+ *  Playoff OT uses 15 minutes = 900 seconds. The actual value is set by
+ *  createOvertimeGameState() in overtime.ts based on game type. This constant
+ *  is only used as a fallback in advanceQuarter (which is immediately
+ *  overridden by the engine). */
 const OVERTIME_LENGTH = 600;
 
 /** Quarters that trigger the two-minute warning (end of each half) */

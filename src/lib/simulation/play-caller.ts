@@ -441,20 +441,27 @@ export function selectPlay(
   // 1. KICKOFF
   // --------------------------------------------------------------------------
   if (state.kickoff) {
-    // Desperate onside kick: losing by any amount with < 2:00 in 4th
-    if (isFourthQuarter(state) && state.clock < TWO_MINUTE_WARNING && scoreDiff < 0) {
-      if (rng.probability(0.50)) {
-        return 'onside_kick';
+    // 2025 rule: trailing team can declare onside kick at ANY point in the game.
+    // Traditional alignment applies on onside kicks (not Dynamic Kickoff).
+    if (scoreDiff < 0) {
+      // Q4 < 2:00 trailing: 50% chance (desperate)
+      if (isFourthQuarter(state) && state.clock < TWO_MINUTE_WARNING) {
+        if (rng.probability(0.50)) return 'onside_kick';
+        return 'kickoff_normal';
       }
-      return 'kickoff_normal';
-    }
-
-    // Trailing by 10+ in 4th quarter with < 5:00
-    if (isFourthQuarter(state) && state.clock < 300 && scoreDiff <= -10) {
-      if (rng.probability(0.30)) {
-        return 'onside_kick';
+      // Q4 < 5:00 trailing by 10+: 30% chance
+      if (isFourthQuarter(state) && state.clock < 300 && scoreDiff <= -10) {
+        if (rng.probability(0.30)) return 'onside_kick';
+        return 'kickoff_normal';
       }
-      return 'kickoff_normal';
+      // Q3+ trailing by 14+: 8% chance
+      if ((state.quarter === 3 || state.quarter === 4) && scoreDiff <= -14) {
+        if (rng.probability(0.08)) return 'onside_kick';
+      }
+      // Any time trailing by 17+: 5% chance (desperation)
+      if (scoreDiff <= -17) {
+        if (rng.probability(0.05)) return 'onside_kick';
+      }
     }
 
     return 'kickoff_normal';

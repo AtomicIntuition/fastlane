@@ -4,6 +4,8 @@ import {
   checkOvertimeEnd,
   updateOvertimeState,
   createOvertimeGameState,
+  getOvertimePeriodLength,
+  getOvertimeTimeouts,
 } from '@/lib/simulation/overtime';
 import type { OvertimeState } from '@/lib/simulation/overtime';
 import { createTestGameState, createTestRNG } from '../../helpers/test-utils';
@@ -230,7 +232,7 @@ describe('Overtime Engine', () => {
       expect(otState.isSuddenDeath).toBe(false);
     });
 
-    it('creates OT game state with correct clock and timeouts', () => {
+    it('creates regular season OT with 10-minute clock and 2 timeouts', () => {
       const rng = createTestRNG();
       const otState = initializeOvertime('home', rng);
       const baseState = createTestGameState({
@@ -240,15 +242,51 @@ describe('Overtime Engine', () => {
         awayScore: 17,
       });
 
-      const otGameState = createOvertimeGameState(baseState, otState);
+      const otGameState = createOvertimeGameState(baseState, otState, 'regular');
 
       expect(otGameState.quarter).toBe('OT');
-      expect(otGameState.clock).toBe(600); // 10-minute OT period
-      expect(otGameState.homeTimeouts).toBe(2); // 2 timeouts per team in OT
+      expect(otGameState.clock).toBe(600); // 10-minute OT period (Rule 16-1-3)
+      expect(otGameState.homeTimeouts).toBe(2); // 2 timeouts in regular season OT
       expect(otGameState.awayTimeouts).toBe(2);
       expect(otGameState.kickoff).toBe(true);
-      expect(otGameState.ballPosition).toBe(35); // kickoff from 35
+      expect(otGameState.ballPosition).toBe(35);
       expect(otGameState.twoMinuteWarning).toBe(true); // disabled in OT
+    });
+
+    it('creates playoff OT with 15-minute clock and 3 timeouts', () => {
+      const rng = createTestRNG();
+      const otState = initializeOvertime('away', rng);
+      const baseState = createTestGameState({
+        quarter: 4,
+        clock: 0,
+        homeScore: 24,
+        awayScore: 24,
+      });
+
+      const otGameState = createOvertimeGameState(baseState, otState, 'wild_card');
+
+      expect(otGameState.quarter).toBe('OT');
+      expect(otGameState.clock).toBe(900); // 15-minute OT period (Rule 16-1-4)
+      expect(otGameState.homeTimeouts).toBe(3); // 3 timeouts in playoff OT
+      expect(otGameState.awayTimeouts).toBe(3);
+      expect(otGameState.kickoff).toBe(true);
+      expect(otGameState.ballPosition).toBe(35);
+    });
+
+    it('getOvertimePeriodLength returns correct values per game type', () => {
+      expect(getOvertimePeriodLength('regular')).toBe(600);
+      expect(getOvertimePeriodLength('wild_card')).toBe(900);
+      expect(getOvertimePeriodLength('divisional')).toBe(900);
+      expect(getOvertimePeriodLength('conference_championship')).toBe(900);
+      expect(getOvertimePeriodLength('super_bowl')).toBe(900);
+    });
+
+    it('getOvertimeTimeouts returns correct values per game type', () => {
+      expect(getOvertimeTimeouts('regular')).toBe(2);
+      expect(getOvertimeTimeouts('wild_card')).toBe(3);
+      expect(getOvertimeTimeouts('divisional')).toBe(3);
+      expect(getOvertimeTimeouts('conference_championship')).toBe(3);
+      expect(getOvertimeTimeouts('super_bowl')).toBe(3);
     });
   });
 

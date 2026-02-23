@@ -326,7 +326,13 @@ export interface PlayResult {
   /** Named route concept used on pass plays. */
   routeConcept?: RouteConcept;
   /** Kickoff metadata for visualization (distance, hang time, catch spot). */
-  kickoffMeta?: { distance: number; hangTime: number; catchSpot: number };
+  kickoffMeta?: {
+    distance: number;
+    hangTime: number;
+    catchSpot: number;
+    /** Which Dynamic Kickoff touchback tier triggered (2025 rules). */
+    touchbackType?: 'endzone' | 'bounce' | 'short';
+  };
 }
 
 // ============================================================

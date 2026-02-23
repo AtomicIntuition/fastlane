@@ -414,11 +414,18 @@ export function PlayScene({
 
 function getKickoffLandingX(play: PlayResult, fromX: number, kickingTeam: 'home' | 'away'): number {
   const kickDir = kickingTeam === 'home' ? -1 : 1; // home kicks right-to-left, away kicks left-to-right
-  const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
   const meta = play.kickoffMeta;
+
+  // Short kick: ball doesn't reach landing zone — lands around the 25-30 area
+  if (meta?.touchbackType === 'short') {
+    // Ball lands roughly 40 yards from kicker (at ~own 25-30)
+    return fromX + kickDir * yardsToPercent(meta.distance || 42);
+  }
+
   if (meta?.distance) {
     return fromX + kickDir * yardsToPercent(meta.distance);
   }
+  const receiverEndZone = kickDir < 0 ? 8.33 : 91.66;
   const catchSpotPct = meta ? (meta.catchSpot / 100) : 0.85;
   return fromX + (receiverEndZone - fromX) * Math.min(catchSpotPct, 0.95);
 }
@@ -1063,8 +1070,18 @@ function OutcomeMarker({
     size = 'lg';
   } else if (lastPlay.type === 'kickoff') {
     if (lastPlay.yardsGained === 0) {
-      text = 'TOUCHBACK';
-      color = '#94a3b8'; // muted white/slate
+      // Dynamic Kickoff tiered touchback labels
+      const tbType = lastPlay.kickoffMeta?.touchbackType;
+      if (tbType === 'endzone') {
+        text = 'TOUCHBACK (35)';
+      } else if (tbType === 'bounce') {
+        text = 'TOUCHBACK (20)';
+      } else if (tbType === 'short') {
+        text = 'SHORT KICK — B40';
+      } else {
+        text = 'TOUCHBACK';
+      }
+      color = tbType === 'short' ? '#f59e0b' : '#94a3b8';
       size = 'md';
     } else {
       text = `+${lastPlay.yardsGained} YDS`;

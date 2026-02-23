@@ -638,6 +638,8 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
       const kicker = findPlayerByPosition(offensePlayers, 'K');
       playResult = resolveExtraPoint(state, rng, kicker);
     } else if (playCall === 'two_point_run' || playCall === 'two_point_pass') {
+      // Rule 11-3-1: Two-point conversion from the 2-yard line (not the 15)
+      state.ballPosition = 98; // opponent's 2-yard line
       playResult = resolveTwoPoint(playCall, state, rng, offensePlayers);
     } else {
       // Normal play: run, pass, kneel, spike, screen — with formation & defense context
@@ -851,19 +853,19 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
         const receivingTeam = flipPossession(state.possession);
         state.possession = receivingTeam;
 
-        // Check for kickoff out of bounds or fair catch
+        // Check for kickoff out of bounds
         const isKickoffOOB = (playResult as PlayResult & { kickoffOOB?: boolean }).kickoffOOB;
-        const isKickoffFairCatch = (playResult as PlayResult & { kickoffFairCatch?: boolean }).kickoffFairCatch;
 
         if (isKickoffOOB) {
           // Kickoff OOB: receiving team gets ball at their 40
           state.ballPosition = KICKOFF_OOB_POSITION;
-        } else if (isKickoffFairCatch) {
-          // Fair catch on kickoff: ball dead at catch spot
-          state.ballPosition = playResult.yardsGained;
         } else if (playResult.type === 'touchback' || playResult.yardsGained === 0) {
-          // Touchback: ball at the 25
-          state.ballPosition = TOUCHBACK_POSITION;
+          // Dynamic Kickoff tiered touchback (2025 rules)
+          const tbType = playResult.kickoffMeta?.touchbackType;
+          if (tbType === 'endzone') state.ballPosition = 35;
+          else if (tbType === 'bounce') state.ballPosition = 20;
+          else if (tbType === 'short') state.ballPosition = 40;
+          else state.ballPosition = TOUCHBACK_POSITION; // legacy fallback
         } else if (playResult.isTouchdown) {
           // Kickoff return TD
           state.ballPosition = 100;
@@ -1214,7 +1216,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
             // Tie at end of Q4: go to overtime
             const coinTossWinner: PossessionTeam = rng.probability(0.5) ? 'home' : 'away';
             overtimeState = initializeOvertime(coinTossWinner, rng);
-            state = createOvertimeGameState(state, overtimeState);
+            state = createOvertimeGameState(state, overtimeState, config.gameType);
             needsNewDrive = true;
 
             // End current drive
@@ -1416,7 +1418,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
         if (overtimeState) {
           const newCoinWinner: PossessionTeam = rng.probability(0.5) ? 'home' : 'away';
           overtimeState = initializeOvertime(newCoinWinner, rng);
-          state = createOvertimeGameState(state, overtimeState);
+          state = createOvertimeGameState(state, overtimeState, config.gameType);
           needsNewDrive = true;
 
           if (statsAccumulator.currentDrive) {
