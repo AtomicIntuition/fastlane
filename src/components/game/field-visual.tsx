@@ -43,6 +43,8 @@ export function FieldVisual({
   awayTeam,
   down,
   yardsToGo,
+  quarter,
+  clock,
   lastPlay,
   isKickoff,
   isPatAttempt,
@@ -153,60 +155,63 @@ export function FieldVisual({
   }, [lastPlay]);
 
   // ── Pregame intro + coin flip state ──────────────────
-  // Flow: pregame → show matchup intro, coin_toss → dismiss intro + show coin flip,
-  // coin flip completes → dismiss. Matchup intro re-appears at halftime only.
+  // Shows matchup intro → coin flip ceremony at game start.
+  // Detection strategy: uses quarter + clock (deterministic) instead of
+  // play type (fragile — catchup bundles pregame/coin_toss events).
+  //
+  // Two paths:
+  // A) Live from beginning: pregame event → intro, coin_toss event → coin flip
+  // B) Catchup / late join: Q1 with 13+ min left → auto-sequence intro + coin flip
   const [showMatchupIntro, setShowMatchupIntro] = useState(false);
   const [showCoinFlip, setShowCoinFlip] = useState(false);
-  const coinFlipShownRef = useRef(false);
-  const introShownRef = useRef(false);
+  const ceremonyShownRef = useRef(false);
+  const ceremonyTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  // Show matchup intro on pregame event (live stream from start)
-  useEffect(() => {
-    if (lastPlay?.type === 'pregame' && !coinFlipShownRef.current && !introShownRef.current) {
-      introShownRef.current = true;
-      setShowMatchupIntro(true);
-    }
-  }, [lastPlay]);
+  // Clear ceremony timers helper
+  const clearCeremonyTimers = useCallback(() => {
+    ceremonyTimersRef.current.forEach(clearTimeout);
+    ceremonyTimersRef.current = [];
+  }, []);
 
-  // Show matchup intro on first mount if game just started (catchup scenario).
-  // If the game is in its first kickoff (Q1, early clock) and we haven't shown
-  // the intro yet, show it briefly as if we caught the start.
-  useEffect(() => {
-    if (introShownRef.current || coinFlipShownRef.current) return;
-    if (!lastPlay || !gameStatus) return;
-    // Only trigger for very early game state: first play is a kickoff or coin_toss
-    // This covers the catchup scenario where pregame/coin_toss events were bundled
-    if (
-      gameStatus === 'live' &&
-      (lastPlay.type === 'kickoff' || lastPlay.type === 'coin_toss') &&
-      playKey <= 1
-    ) {
-      introShownRef.current = true;
-      setShowMatchupIntro(true);
-      // Auto-transition to coin flip after intro
-      const timer = setTimeout(() => {
-        setShowMatchupIntro(false);
-        setTimeout(() => {
-          setShowCoinFlip(true);
-          coinFlipShownRef.current = true;
-        }, 400);
-      }, 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [lastPlay, gameStatus, playKey]);
+  // Start the full ceremony sequence (intro → coin flip → done)
+  const startCeremony = useCallback(() => {
+    if (ceremonyShownRef.current) return;
+    ceremonyShownRef.current = true;
+    clearCeremonyTimers();
 
-  // On coin toss event: dismiss matchup intro, show coin flip (live stream)
-  useEffect(() => {
-    if (lastPlay?.type === 'coin_toss' && !coinFlipShownRef.current) {
+    setShowMatchupIntro(true);
+
+    // After 4s: dismiss intro, brief pause, then coin flip
+    const t1 = setTimeout(() => {
       setShowMatchupIntro(false);
-      // Brief delay before coin appears
-      const timer = setTimeout(() => {
-        setShowCoinFlip(true);
-        coinFlipShownRef.current = true;
-      }, 400);
-      return () => clearTimeout(timer);
+    }, 4000);
+    const t2 = setTimeout(() => {
+      setShowCoinFlip(true);
+    }, 4400);
+
+    ceremonyTimersRef.current = [t1, t2];
+  }, [clearCeremonyTimers]);
+
+  // Path A: Live stream from beginning — pregame event triggers ceremony
+  useEffect(() => {
+    if (lastPlay?.type === 'pregame' || lastPlay?.type === 'coin_toss') {
+      startCeremony();
     }
-  }, [lastPlay]);
+  }, [lastPlay, startCeremony]);
+
+  // Path B: Catchup / late join — detect early Q1 on first mount
+  // Q1 with 13+ minutes remaining = less than 2 min of game time elapsed
+  useEffect(() => {
+    if (ceremonyShownRef.current) return;
+    if (gameStatus !== 'live' || !lastPlay) return;
+    if (quarter === 1 && clock >= 780) {
+      startCeremony();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameStatus, lastPlay]);
+
+  // Cleanup timers on unmount
+  useEffect(() => clearCeremonyTimers, [clearCeremonyTimers]);
 
   const handleCoinFlipComplete = useCallback(() => {
     setShowCoinFlip(false);
