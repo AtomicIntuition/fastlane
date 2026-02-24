@@ -10,7 +10,7 @@ import { useDynamicTab } from '@/hooks/use-dynamic-tab';
 import { useProceduralAudio } from '@/hooks/use-procedural-audio';
 import { useBroadcasterAudio } from '@/hooks/use-broadcaster-audio';
 import { buildLiveBoxScore } from '@/lib/utils/live-box-score';
-import { getTeamLogoUrl } from '@/lib/utils/team-logos';
+import { getTeamLogoUrl, canFlipLogo } from '@/lib/utils/team-logos';
 import { ScoreBug } from '@/components/game/scorebug';
 import { PlayFeed } from '@/components/game/play-feed';
 import { FieldVisual } from '@/components/game/field-visual';
@@ -908,7 +908,7 @@ function QuarterBreakOverlay({
               <span className="text-xs text-text-muted">{home.abbreviation}</span>
               <p className="text-xl font-black tabular-nums">{homeScore}</p>
             </div>
-            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-8 h-8 object-contain" style={{ transform: 'scaleX(-1)' }} />
+            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-8 h-8 object-contain" style={{ transform: canFlipLogo(home.abbreviation) ? 'scaleX(-1)' : undefined }} />
           </div>
         </div>
 
@@ -1158,7 +1158,7 @@ function HalftimeReport({
               <span className="text-xs text-text-muted">{home.abbreviation}</span>
               <p className="text-xl font-black tabular-nums">{homeScore}</p>
             </div>
-            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-10 h-10 object-contain" style={{ transform: 'scaleX(-1)' }} />
+            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-10 h-10 object-contain" style={{ transform: canFlipLogo(home.abbreviation) ? 'scaleX(-1)' : undefined }} />
           </div>
         </div>
 
@@ -1289,7 +1289,7 @@ function TwoMinuteWarningOverlay({
               <span className="text-xs text-text-muted">{home.abbreviation}</span>
               <p className="text-xl font-black tabular-nums">{homeScore}</p>
             </div>
-            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-8 h-8 object-contain" style={{ transform: 'scaleX(-1)' }} />
+            <img src={getTeamLogoUrl(home.abbreviation)} alt="" className="w-8 h-8 object-contain" style={{ transform: canFlipLogo(home.abbreviation) ? 'scaleX(-1)' : undefined }} />
           </div>
         </div>
 

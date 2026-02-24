@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { getTeamLogoUrl } from '@/lib/utils/team-logos';
+import { getTeamLogoUrl, canFlipLogo } from '@/lib/utils/team-logos';
 
 interface KickoffIntroOverlayProps {
   show: boolean;
@@ -143,7 +143,7 @@ export function KickoffIntroOverlay({
               src={getTeamLogoUrl(homeTeam.abbreviation)}
               alt={homeTeam.abbreviation}
               className="w-12 h-12 sm:w-16 sm:h-16 object-contain drop-shadow-lg"
-              style={{ transform: 'scaleX(-1)' }}
+              style={{ transform: canFlipLogo(homeTeam.abbreviation) ? 'scaleX(-1)' : undefined }}
               draggable={false}
             />
           </div>

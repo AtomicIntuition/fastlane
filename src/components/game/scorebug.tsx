@@ -9,7 +9,7 @@ import {
   formatDownAndDistance,
   formatFieldPosition,
 } from '@/lib/utils/formatting';
-import { getTeamScoreboardLogoUrl } from '@/lib/utils/team-logos';
+import { getTeamScoreboardLogoUrl, canFlipLogo } from '@/lib/utils/team-logos';
 
 interface ScoreBugProps {
   gameState: GameState;
@@ -202,7 +202,7 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
                 src={getTeamScoreboardLogoUrl(homeTeam.abbreviation)}
                 alt=""
                 className="w-12 h-12 flex-shrink-0 object-contain drop-shadow-lg"
-                style={{ transform: 'scaleX(-1)' }}
+                style={{ transform: canFlipLogo(homeTeam.abbreviation) ? 'scaleX(-1)' : undefined }}
               />
               {possession === 'home' && (
                 <div
@@ -313,7 +313,7 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
                 src={getTeamScoreboardLogoUrl(homeTeam.abbreviation)}
                 alt=""
                 className="w-9 h-9 flex-shrink-0 object-contain drop-shadow-lg"
-                style={{ transform: 'scaleX(-1)' }}
+                style={{ transform: canFlipLogo(homeTeam.abbreviation) ? 'scaleX(-1)' : undefined }}
               />
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { PlayResult } from '@/lib/simulation/types';
-import { getTeamScoreboardLogoUrl } from '@/lib/utils/team-logos';
+import { getTeamScoreboardLogoUrl, canFlipLogo } from '@/lib/utils/team-logos';
 import {
   PRE_SNAP_MS,
   SNAP_MS,
@@ -233,8 +233,10 @@ export function PlayScene({
   const activeLogo = isPostTurnover ? opposingTeamAbbreviation : teamAbbreviation;
   const activeColor = isPostTurnover ? defenseColor : teamColor;
 
-  // Home team logos face left (toward opponent) — flip when home has the ball
-  const flipLogo = (possession === 'home' && !isPostTurnover) || (possession === 'away' && isPostTurnover);
+  // Home team logos face left (toward opponent) — flip when home has the ball,
+  // but only if the team's logo doesn't contain text/letters.
+  const wantsFlip = (possession === 'home' && !isPostTurnover) || (possession === 'away' && isPostTurnover);
+  const flipLogo = wantsFlip && canFlipLogo(activeLogo);
 
   // ── Determine visual effects for current play ──────────────
   const playType = lastPlay?.type ?? null;
@@ -272,16 +274,17 @@ export function PlayScene({
     : 0;
   const kickoffIsTouchback = isKickoffPlay && (lastPlay?.yardsGained === 0);
   // Home kicks right-to-left (faces right, no flip), Away kicks left-to-right (faces left, flip)
-  const kickerFlip = kickingTeam === 'away';
-  const receiverFlip = possession === 'away';
+  // Skip flip for teams with text/letter logos.
+  const kickerFlip = kickingTeam === 'away' && canFlipLogo(opposingTeamAbbreviation);
+  const receiverFlip = possession === 'away' && canFlipLogo(teamAbbreviation);
 
   // ── Punt scene data ───────────────────────────────────────
   // Same as kickoff: possession has already flipped to the receiving team.
   // opposingTeamAbbreviation = punting team, teamAbbreviation = receiving team.
   const isPuntPlay = playType === 'punt';
   const puntingTeam = possession === 'home' ? 'away' : 'home';
-  const punterFlip = puntingTeam === 'away';
-  const puntReceiverFlip = possession === 'away';
+  const punterFlip = puntingTeam === 'away' && canFlipLogo(opposingTeamAbbreviation);
+  const puntReceiverFlip = possession === 'away' && canFlipLogo(teamAbbreviation);
   const puntIsTouchback = isPuntPlay && (lastPlay?.yardsGained === 0);
   const puntIsFairCatch = isPuntPlay && (lastPlay?.description || '').toLowerCase().includes('fair catch');
 

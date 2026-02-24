@@ -63,3 +63,26 @@ export function getTeamScoreboardLogoUrl(abbreviation: string): string {
   const espnAbbrev = ESPN_ABBREV_MAP[abbreviation] ?? abbreviation.toLowerCase();
   return `https://a.espncdn.com/combiner/i?img=/i/teamlogos/nfl/500/scoreboard/${espnAbbrev}.png&h=96&w=96`;
 }
+
+/**
+ * Teams whose ESPN logos contain text/letters that look wrong when
+ * horizontally mirrored (scaleX(-1)). These logos should never be flipped.
+ */
+const NO_FLIP_LOGOS = new Set([
+  'BAL', // "B" with wings
+  'CIN', // Striped "B"
+  'GB',  // "G" oval
+  'KC',  // "KC" inside arrowhead
+  'LAR', // "LA" monogram
+  'LV',  // "RAIDERS" text
+  'NYG', // "ny" script
+  'NYJ', // "NY" with jet
+  'PIT', // "Steelers" text
+  'SF',  // "SF" oval
+  'TEN', // Stylized "T" with flame
+]);
+
+/** Returns true if this team's logo can be safely mirrored. */
+export function canFlipLogo(abbreviation: string): boolean {
+  return !NO_FLIP_LOGOS.has(abbreviation);
+}
