@@ -32,6 +32,10 @@ const AUDIO_FILES = {
  * 1. Ambient base: continuous crowd murmur (looped, low volume)
  * 2. Reaction layer: cheers/boos triggered by play results
  * 3. Peak layer: full stadium roar for touchdowns, huge plays
+ *
+ * Mobile: AudioContext is created + resumed synchronously within the user
+ * gesture, then files are loaded in the background. A keep-alive interval
+ * prevents iOS from suspending the context.
  */
 export function useCrowdAudio(): CrowdAudioState & CrowdAudioControls {
   const [isEnabled, setIsEnabled] = useState(false);
@@ -46,17 +50,17 @@ export function useCrowdAudio(): CrowdAudioState & CrowdAudioControls {
   const reactionGainRef = useRef<GainNode | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const audioBuffersRef = useRef<Map<string, AudioBuffer>>(new Map());
-  const isInitializedRef = useRef(false);
+  const isLoadingRef = useRef(false);
+  const keepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Initialize Web Audio context
-  const initAudio = useCallback(async () => {
-    if (isInitializedRef.current) return;
+  // Ensure AudioContext exists and is running (call synchronously within gesture)
+  const ensureContext = useCallback(() => {
+    let ctx = audioContextRef.current;
 
-    try {
-      const ctx = new AudioContext();
+    if (!ctx) {
+      ctx = new AudioContext();
       audioContextRef.current = ctx;
 
-      // Create gain nodes
       const masterGain = ctx.createGain();
       masterGain.gain.value = volume;
       masterGain.connect(ctx.destination);
@@ -71,57 +75,112 @@ export function useCrowdAudio(): CrowdAudioState & CrowdAudioControls {
       reactionGain.gain.value = 0.6;
       reactionGain.connect(masterGain);
       reactionGainRef.current = reactionGain;
+    }
 
-      // Load audio buffers
-      await Promise.allSettled(
-        Object.entries(AUDIO_FILES).map(async ([key, url]) => {
-          try {
-            const response = await fetch(url);
-            if (!response.ok) return;
-            const arrayBuffer = await response.arrayBuffer();
-            const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
+    // Resume immediately within gesture — critical for mobile
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+
+    return ctx;
+  }, [volume]);
+
+  // Load audio files in background (non-blocking, after context is alive)
+  const loadAudioFiles = useCallback((ctx: AudioContext) => {
+    if (isLoadingRef.current || audioBuffersRef.current.size > 0) return;
+    isLoadingRef.current = true;
+
+    // Deduplicate URLs so we don't fetch the same file twice
+    const uniqueEntries = new Map<string, string[]>();
+    for (const [key, url] of Object.entries(AUDIO_FILES)) {
+      const existing = uniqueEntries.get(url);
+      if (existing) {
+        existing.push(key);
+      } else {
+        uniqueEntries.set(url, [key]);
+      }
+    }
+
+    for (const [url, keys] of uniqueEntries) {
+      fetch(url)
+        .then((res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.arrayBuffer();
+        })
+        .then((buf) => ctx.decodeAudioData(buf))
+        .then((audioBuffer) => {
+          for (const key of keys) {
             audioBuffersRef.current.set(key, audioBuffer);
-          } catch {
-            // Audio file not available — degrade gracefully
+          }
+          // Start ambient loop once it's loaded
+          if (keys.includes("ambient") && !ambientSourceRef.current) {
+            startAmbientLoop(ctx, audioBuffer);
           }
         })
-      );
+        .catch(() => {
+          // File unavailable — degrade gracefully
+        });
+    }
+  }, []);
 
-      // Start ambient loop
-      const ambientBuffer = audioBuffersRef.current.get("ambient");
-      if (ambientBuffer) {
-        const source = ctx.createBufferSource();
-        source.buffer = ambientBuffer;
-        source.loop = true;
-        source.connect(ambientGain);
-        source.start();
-        ambientSourceRef.current = source;
+  // Start the looping ambient track
+  const startAmbientLoop = useCallback(
+    (ctx: AudioContext, buffer: AudioBuffer) => {
+      if (ambientSourceRef.current) return;
+      const ambientGain = ambientGainRef.current;
+      if (!ambientGain) return;
+
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.loop = true;
+      source.connect(ambientGain);
+      source.start();
+      ambientSourceRef.current = source;
+    },
+    []
+  );
+
+  // iOS keep-alive: periodically resume context to prevent suspension
+  const startKeepAlive = useCallback(() => {
+    if (keepAliveRef.current) return;
+    keepAliveRef.current = setInterval(() => {
+      const ctx = audioContextRef.current;
+      if (ctx && ctx.state === "suspended") {
+        ctx.resume();
       }
+    }, 5000);
+  }, []);
 
-      isInitializedRef.current = true;
+  const stopKeepAlive = useCallback(() => {
+    if (keepAliveRef.current) {
+      clearInterval(keepAliveRef.current);
+      keepAliveRef.current = null;
+    }
+  }, []);
+
+  // Enable — called synchronously from user gesture (click/tap)
+  const enable = useCallback(() => {
+    try {
+      // Step 1: Create + resume AudioContext immediately within gesture
+      const ctx = ensureContext();
+      // Step 2: Load files in background (non-blocking)
+      loadAudioFiles(ctx);
+      // Step 3: Keep iOS from suspending
+      startKeepAlive();
+      setIsEnabled(true);
     } catch {
       // Web Audio API not available
     }
-  }, [volume]);
+  }, [ensureContext, loadAudioFiles, startKeepAlive]);
 
-  // Enable audio
-  const enable = useCallback(async () => {
-    if (!isInitializedRef.current) {
-      await initAudio();
-    }
-    if (audioContextRef.current?.state === "suspended") {
-      await audioContextRef.current.resume();
-    }
-    setIsEnabled(true);
-  }, [initAudio]);
-
-  // Disable audio
+  // Disable
   const disable = useCallback(() => {
     if (audioContextRef.current?.state === "running") {
       audioContextRef.current.suspend();
     }
+    stopKeepAlive();
     setIsEnabled(false);
-  }, []);
+  }, [stopKeepAlive]);
 
   // Toggle
   const toggle = useCallback(() => {
@@ -154,6 +213,11 @@ export function useCrowdAudio(): CrowdAudioState & CrowdAudioControls {
 
       if (!ctx || !buffer || !reactionGain) return;
 
+      // Resume context if iOS suspended it between plays
+      if (ctx.state === "suspended") {
+        ctx.resume();
+      }
+
       const source = ctx.createBufferSource();
       source.buffer = buffer;
 
@@ -179,7 +243,7 @@ export function useCrowdAudio(): CrowdAudioState & CrowdAudioControls {
   // Trigger a crowd reaction
   const triggerReaction = useCallback(
     (reaction: CrowdReaction, excitement: number) => {
-      if (!isEnabled || !isInitializedRef.current) return;
+      if (!isEnabled) return;
 
       setCurrentReaction(reaction);
 
@@ -193,7 +257,7 @@ export function useCrowdAudio(): CrowdAudioState & CrowdAudioControls {
         );
       }
 
-      // Play reaction sound
+      // Play reaction sound (only if buffers have loaded)
       const reactionVolume = 0.3 + (excitement / 100) * 0.7;
 
       switch (reaction) {
@@ -235,10 +299,11 @@ export function useCrowdAudio(): CrowdAudioState & CrowdAudioControls {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      stopKeepAlive();
       ambientSourceRef.current?.stop();
       audioContextRef.current?.close();
     };
-  }, []);
+  }, [stopKeepAlive]);
 
   return {
     isEnabled,

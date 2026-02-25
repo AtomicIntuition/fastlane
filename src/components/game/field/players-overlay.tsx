@@ -202,9 +202,12 @@ export function PlayersOverlay({
     let defPositions: DotPos[];
 
     if (playType === 'kickoff') {
-      // Kickoff: kicking team at LOS, receiving team deep
+      // Kickoff: kicking team at LOS, receiving team at far end of field
       offPositions = getAbsolutePositions(SPECIAL_TEAMS.kickoff.kicking, losX, offDir, 'offense');
-      defPositions = getAbsolutePositions(SPECIAL_TEAMS.kickoff.receiving, losX, offDir, 'defense');
+      // Receiving team lines up downfield from the kicker's perspective.
+      // Use 'offense' side (losX + offDir * dx) so positive dx pushes them
+      // toward the receiving end zone — opposite direction from the kicking team.
+      defPositions = getAbsolutePositions(SPECIAL_TEAMS.kickoff.receiving, losX, offDir, 'offense');
     } else if (playType === 'punt') {
       offPositions = getAbsolutePositions(SPECIAL_TEAMS.punt.kicking, losX, offDir, 'offense');
       defPositions = getAbsolutePositions(SPECIAL_TEAMS.punt.receiving, losX, offDir, 'defense');
@@ -763,13 +766,13 @@ export function PlayersOverlay({
       // ── Kickoff return ──
       if (playType === 'kickoff') {
         if (p.role === 'KR') {
+          // KR starts deep, holds until ball lands, then runs toward toX
           if (t < KICKOFF_PHASE_END) return p;
           const returnT = (t - KICKOFF_PHASE_END) / (1 - KICKOFF_PHASE_END);
-          const ballX = lerp(fromX, toX, easeOutCubic(returnT));
           const amplitude = YARDS.MAX_SCRAMBLE_WEAVE * (1 - returnT * 0.5);
           return {
             ...p,
-            x: clamp(ballX + offDir * (5 * YARD_PCT), 2, 98),
+            x: clamp(lerp(p.x, toX, easeOutCubic(returnT)), 2, 98),
             y: clamp(50 + Math.sin(returnT * Math.PI * 4) * amplitude, 5, 95),
             role: p.role,
           };
@@ -777,18 +780,17 @@ export function PlayersOverlay({
         if (p.role === 'WDG') {
           if (t < KICKOFF_PHASE_END) return p;
           const returnT = (t - KICKOFF_PHASE_END) / (1 - KICKOFF_PHASE_END);
-          const ballX = lerp(fromX, toX, easeOutCubic(returnT));
           return {
             ...p,
-            x: clamp(ballX + offDir * (10 * YARD_PCT), 2, 98),
+            x: clamp(lerp(p.x, toX, easeOutCubic(returnT) * 0.6), 2, 98),
             y: clamp(p.y + (50 - p.y) * 0.3 * returnT, 5, 95),
             role: p.role,
           };
         }
-        // Regular blockers
+        // Regular blockers — run upfield toward the kicking team
         return {
           ...p,
-          x: clamp(p.x + offDir * (20 * YARD_PCT) * eased, 2, 98),
+          x: clamp(p.x - offDir * (20 * YARD_PCT) * eased, 2, 98),
           y: clamp(p.y + (50 - p.y) * 0.35 * eased, 5, 95),
           role: p.role,
         };
