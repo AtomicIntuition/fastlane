@@ -9,6 +9,7 @@ import { GameViewer } from '@/components/game/game-viewer';
 import { GameRecapPage } from './game-recap-page';
 import { PregameView } from './pregame-view';
 import type { Team, BoxScore, PlayerGameStats } from '@/lib/simulation/types';
+import { getStadiumName } from '@/lib/utils/team-logos';
 
 // ============================================================
 // Dynamic metadata for OG tags
@@ -110,9 +111,42 @@ export default async function GamePage({ params }: PageProps) {
   const homeTeam = homeTeamRows[0] ?? null;
   const awayTeam = awayTeamRows[0] ?? null;
 
+  // JSON-LD structured data for sports event
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SportsEvent',
+    name: `${awayTeam?.name ?? 'Away'} at ${homeTeam?.name ?? 'Home'}`,
+    sport: 'American Football',
+    homeTeam: homeTeam
+      ? { '@type': 'SportsTeam', name: homeTeam.name, identifier: homeTeam.abbreviation }
+      : undefined,
+    awayTeam: awayTeam
+      ? { '@type': 'SportsTeam', name: awayTeam.name, identifier: awayTeam.abbreviation }
+      : undefined,
+    location: homeTeam
+      ? { '@type': 'Place', name: getStadiumName(homeTeam.abbreviation) }
+      : undefined,
+    eventStatus: game.status === 'completed'
+      ? 'https://schema.org/EventCompleted'
+      : game.status === 'broadcasting'
+        ? 'https://schema.org/EventScheduled'
+        : 'https://schema.org/EventScheduled',
+    ...(game.status === 'completed' && {
+      result: {
+        '@type': 'Thing',
+        name: `${awayTeam?.abbreviation} ${game.awayScore}, ${homeTeam?.abbreviation} ${game.homeScore}`,
+      },
+    }),
+  };
+
   // Scheduled games get the pregame view with prediction widget
   if (game.status === 'scheduled') {
     return (
+      <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <PregameView
         gameId={gameId}
         week={game.week}
@@ -142,6 +176,7 @@ export default async function GamePage({ params }: PageProps) {
             : null
         }
       />
+      </>
     );
   }
 
@@ -167,20 +202,34 @@ export default async function GamePage({ params }: PageProps) {
     });
 
     return (
-      <GameRecapPage
-        gameId={gameId}
-        homeTeam={mapTeam(homeTeam)}
-        awayTeam={mapTeam(awayTeam)}
-        finalScore={{
-          home: game.homeScore ?? 0,
-          away: game.awayScore ?? 0,
-        }}
-        boxScore={boxScoreData ?? null}
-        mvp={mvpData}
-      />
+      <>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+        <GameRecapPage
+          gameId={gameId}
+          homeTeam={mapTeam(homeTeam)}
+          awayTeam={mapTeam(awayTeam)}
+          finalScore={{
+            home: game.homeScore ?? 0,
+            away: game.awayScore ?? 0,
+          }}
+          boxScore={boxScoreData ?? null}
+          mvp={mvpData}
+        />
+      </>
     );
   }
 
   // Simulating / broadcasting games get the live viewer
-  return <GameViewer gameId={gameId} />;
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <GameViewer gameId={gameId} />
+    </>
+  );
 }

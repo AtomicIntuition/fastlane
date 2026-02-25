@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { userScores, predictions } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, count, sql } from "drizzle-orm";
 
 /** Get the top N users on the leaderboard */
 export async function getLeaderboard(limit: number = 100) {
@@ -60,23 +60,22 @@ export async function updateUserScore(
   await recalculateRanks();
 }
 
-/** Recalculate leaderboard ranks */
+/** Recalculate leaderboard ranks in a single query using a window function */
 async function recalculateRanks() {
-  const allScores = await db
-    .select()
-    .from(userScores)
-    .orderBy(desc(userScores.totalPoints));
-
-  for (let i = 0; i < allScores.length; i++) {
-    await db
-      .update(userScores)
-      .set({ rank: i + 1 })
-      .where(eq(userScores.id, allScores[i].id));
-  }
+  await db.execute(sql`
+    UPDATE user_scores SET rank = sub.row_num
+    FROM (
+      SELECT id, ROW_NUMBER() OVER (ORDER BY total_points DESC) as row_num
+      FROM user_scores
+    ) sub
+    WHERE user_scores.id = sub.id
+  `);
 }
 
 /** Get total number of users with predictions */
 export async function getTotalPredictors(): Promise<number> {
-  const result = await db.select().from(userScores);
-  return result.length;
+  const result = await db
+    .select({ value: count() })
+    .from(userScores);
+  return result[0]?.value ?? 0;
 }

@@ -1,25 +1,29 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { getTeamLogoUrl, canFlipLogo } from '@/lib/utils/team-logos';
+import { getTeamLogoUrl, canFlipLogo, getStadiumName } from '@/lib/utils/team-logos';
+import type { WeatherConditions } from '@/lib/simulation/types';
 
 interface KickoffIntroOverlayProps {
   show: boolean;
   awayTeam: { abbreviation: string; primaryColor: string };
   homeTeam: { abbreviation: string; primaryColor: string };
   onComplete: () => void;
+  /** Weather conditions for the game (shown in stadium info bar). */
+  weather?: WeatherConditions | null;
 }
 
 /**
  * Pro-style matchup overlay shown at game start (pregame) and halftime.
- * Displays team logos with a "VS" graphic. Can be dismissed externally
- * (parent sets show=false) or auto-dismisses after 6 seconds.
+ * Displays team logos with a "VS" graphic, stadium name, and weather.
+ * Can be dismissed externally (parent sets show=false) or auto-dismisses after 6 seconds.
  */
 export function KickoffIntroOverlay({
   show,
   awayTeam,
   homeTeam,
   onComplete,
+  weather,
 }: KickoffIntroOverlayProps) {
   const [visible, setVisible] = useState(false);
   const [fading, setFading] = useState(false);
@@ -65,6 +69,12 @@ export function KickoffIntroOverlay({
 
   if (!visible) return null;
 
+  const stadiumName = getStadiumName(homeTeam.abbreviation);
+
+  // Weather icon helper
+  const weatherIcon = weather ? getWeatherIcon(weather.type) : null;
+  const weatherLabel = weather?.description ?? null;
+
   return (
     <div
       className="absolute inset-0 z-[45] flex flex-col items-center justify-center pointer-events-none"
@@ -75,6 +85,17 @@ export function KickoffIntroOverlay({
         transition: 'opacity 500ms ease-out',
       }}
     >
+      {/* Stadium name */}
+      <div
+        className="mb-3 sm:mb-4 text-center"
+        style={{ animation: 'kickoff-intro-fade-in 0.6s ease-out 0s both' }}
+      >
+        <span className="text-[9px] sm:text-[10px] font-bold tracking-[0.3em] uppercase text-white/40">
+          {stadiumName}
+        </span>
+      </div>
+
+      {/* Team logos + VS */}
       <div
         className="flex items-center gap-6 sm:gap-10"
         style={{
@@ -155,6 +176,33 @@ export function KickoffIntroOverlay({
           </span>
         </div>
       </div>
+
+      {/* Weather bar */}
+      {weatherLabel && (
+        <div
+          className="mt-3 sm:mt-4 flex items-center gap-1.5"
+          style={{ animation: 'kickoff-intro-fade-in 0.5s ease-out 0.4s both' }}
+        >
+          {weatherIcon && (
+            <span className="text-[12px] sm:text-[13px]">{weatherIcon}</span>
+          )}
+          <span className="text-[9px] sm:text-[10px] font-medium tracking-wider text-white/50">
+            {weatherLabel}
+          </span>
+        </div>
+      )}
     </div>
   );
+}
+
+function getWeatherIcon(type: string): string {
+  switch (type) {
+    case 'clear': return '\u2600\uFE0F'; // sun
+    case 'rain': return '\uD83C\uDF27\uFE0F'; // rain cloud
+    case 'snow': return '\uD83C\uDF28\uFE0F'; // snow cloud
+    case 'fog': return '\uD83C\uDF2B\uFE0F'; // fog
+    case 'wind': return '\uD83D\uDCA8'; // wind
+    case 'overcast': return '\u2601\uFE0F'; // cloud
+    default: return '';
+  }
 }

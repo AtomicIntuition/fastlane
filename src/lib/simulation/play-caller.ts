@@ -471,21 +471,48 @@ export function selectPlay(
   // 2. PAT / TWO-POINT CONVERSION
   // --------------------------------------------------------------------------
   if (state.patAttempt) {
-    // Trailing by exactly 2 in 4th quarter: go for 2 to tie
-    if (isFourthQuarter(state) && scoreDiff === -2) {
-      return rng.probability(0.60) ? 'two_point_pass' : 'two_point_run';
+    const goForTwo = () => rng.probability(0.55) ? 'two_point_pass' as const : 'two_point_run' as const;
+
+    // ---- NFL 2-point conversion decision chart ----
+    // scoreDiff is AFTER the TD (6 points already added) but BEFORE PAT
+    // So scoreDiff represents current lead/deficit including the just-scored TD
+
+    const isLateGame = isFourthQuarter(state) && state.clock < 300;
+
+    // Down 2: go for 2 to tie (vs kick to go up 1)
+    if (scoreDiff === -2) return goForTwo();
+
+    // Down 5: go for 2 to make it a 3-pt game (FG ties)
+    if (scoreDiff === -5) return goForTwo();
+
+    // Down 9: go for 2 to make it a 7-pt game (TD ties)
+    if (scoreDiff === -9) return goForTwo();
+
+    // Down 12: go for 2 to make it a 10-pt game (TD+FG ties)
+    if (scoreDiff === -12) return goForTwo();
+
+    // Down 16: go for 2 to make it a 14-pt game (2 TDs)
+    if (scoreDiff === -16) return goForTwo();
+
+    // Down 19: go for 2 to make it a 17-pt game
+    if (scoreDiff === -19) return goForTwo();
+
+    // Up 1: go for 2 to go up 3 (force FG to tie instead of XP)
+    if (scoreDiff === 1) return goForTwo();
+
+    // Up 4: go for 2 to go up 6 (force TD to take lead)
+    if (scoreDiff === 4) return goForTwo();
+
+    // Late game: more aggressive on other score differentials
+    if (isLateGame) {
+      // Down 3: go for 2 to make it a 1-pt game
+      if (scoreDiff === -3) return goForTwo();
+      // Down 8: go for 2 to make it a 6-pt game
+      if (scoreDiff === -8) return goForTwo();
     }
 
-    // Trailing by exactly 5 in 4th quarter after scoring a TD:
-    // A two-point conversion would make it a 3-point game (FG to tie)
-    if (isFourthQuarter(state) && scoreDiff === -5) {
-      return rng.probability(0.55) ? 'two_point_pass' : 'two_point_run';
-    }
-
-    // Random 2pt attempt for variety (~8% of the time)
-    if (rng.probability(0.08)) {
-      return rng.probability(0.60) ? 'two_point_pass' : 'two_point_run';
-    }
+    // Random 2pt attempt for variety (~5% of the time)
+    if (rng.probability(0.05)) return goForTwo();
 
     return 'extra_point';
   }
@@ -539,17 +566,36 @@ export function selectPlay(
   // --------------------------------------------------------------------------
   if (state.down === 4) {
     const isBehindLate = scoreDiff < 0 && isFourthQuarter(state) && state.clock < 300;
+    const isBlowout = scoreDiff < -21;
+    const isTrailingQ4 = scoreDiff < 0 && isFourthQuarter(state);
 
-    // Short yardage past midfield: go for it
-    if (state.yardsToGo <= 2 && state.ballPosition >= 60) {
+    // ---- Analytics-informed go-for-it logic (modern NFL is aggressive) ----
+
+    // Blowout: go for it almost everywhere (nothing to lose)
+    if (isBlowout && state.yardsToGo <= 8) {
       return selectGoForItPlay(state, rng);
     }
 
-    // In field goal range: kick it (unless desperate)
+    // Trailing in Q4: much more aggressive
+    if (isTrailingQ4) {
+      // Trailing late with < 2 min: go for it on anything reasonable
+      if (state.clock < 120 && state.yardsToGo <= 10) {
+        return selectGoForItPlay(state, rng);
+      }
+      // Trailing late with < 5 min: go for it when FG won't help enough
+      if (isBehindLate && scoreDiff < -3 && state.yardsToGo <= 6) {
+        return selectGoForItPlay(state, rng);
+      }
+      // Trailing Q4 in no-man's land (past own 35): go for it on short
+      if (state.yardsToGo <= 3 && state.ballPosition >= 35) {
+        return selectGoForItPlay(state, rng);
+      }
+    }
+
+    // In field goal range: usually kick it
     if (state.ballPosition >= FIELD_GOAL_RANGE) {
-      // If trailing late and it's not quite enough, still consider going for it
+      // Unless trailing late and FG won't cut it
       if (isBehindLate && scoreDiff < -3 && state.yardsToGo <= 5) {
-        // Go for it on 4th and short when a FG won't help enough
         return selectGoForItPlay(state, rng);
       }
       // Fake field goal (~1% chance)
@@ -559,15 +605,27 @@ export function selectPlay(
       return 'field_goal';
     }
 
-    // Desperate situation: trailing late, go for it if short or in no-man's land
-    if (isBehindLate) {
-      if (state.yardsToGo <= 5) {
-        return selectGoForItPlay(state, rng);
-      }
-      // In no-man's land (too far for FG, too close to punt effectively): ~40-62
-      if (state.ballPosition >= 40) {
-        return selectGoForItPlay(state, rng);
-      }
+    // ---- Expected-points-style go-for-it thresholds by field position ----
+    // Modern NFL teams go for it aggressively in opponent territory
+
+    // 4th & 1: Go for it inside opponent's 45
+    if (state.yardsToGo <= 1 && state.ballPosition >= 55) {
+      return selectGoForItPlay(state, rng);
+    }
+
+    // 4th & 2: Go for it inside opponent's 40
+    if (state.yardsToGo <= 2 && state.ballPosition >= 60) {
+      return selectGoForItPlay(state, rng);
+    }
+
+    // 4th & 3: Go for it inside opponent's 35
+    if (state.yardsToGo <= 3 && state.ballPosition >= 65) {
+      return selectGoForItPlay(state, rng);
+    }
+
+    // 4th & 4-5: Go for it inside opponent's 30 (but out of FG range)
+    if (state.yardsToGo <= 5 && state.ballPosition >= 70 && state.ballPosition < FIELD_GOAL_RANGE) {
+      return selectGoForItPlay(state, rng);
     }
 
     // Fake punt (~2% when 4th-and-short in opponent territory)

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { gameEvents } from "@/lib/db/schema";
-import { eq, asc, gt } from "drizzle-orm";
+import { eq, asc, gt, count } from "drizzle-orm";
 
 /** Get all events for a game in order */
 export async function getGameEvents(gameId: string) {
@@ -51,10 +51,10 @@ export async function storeGameEvents(
 /** Get the total event count for a game */
 export async function getEventCount(gameId: string): Promise<number> {
   const result = await db
-    .select()
+    .select({ value: count() })
     .from(gameEvents)
     .where(eq(gameEvents.gameId, gameId));
-  return result.length;
+  return result[0]?.value ?? 0;
 }
 
 /** Get the last event for a game */

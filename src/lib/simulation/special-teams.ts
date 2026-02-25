@@ -715,12 +715,13 @@ export function calculatePuntReturnPosition(
  * Calculate the new ball position for the receiving team after a kickoff return.
  *
  * @param returnYards - Total yards returned from the point of reception.
+ * @param catchSpot - Where the returner fielded the ball (yards from own goal line).
  * @returns Ball position from the receiving team's own goal line.
  */
-export function calculateKickoffReturnPosition(returnYards: number): number {
-  // Kick returners field the ball deep in their own territory (typically 0-5)
-  // and return it. The final position is simply the return distance.
-  return clamp(returnYards, 1, C.ENDZONE_END);
+export function calculateKickoffReturnPosition(returnYards: number, catchSpot: number = 0): number {
+  // Kick returners field the ball at catchSpot (typically 2-18 under dynamic kickoff rules)
+  // and return it. Final position = catch spot + return distance.
+  return clamp(catchSpot + returnYards, 1, C.ENDZONE_END);
 }
 
 /**

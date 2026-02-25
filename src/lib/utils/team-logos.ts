@@ -86,3 +86,47 @@ const NO_FLIP_LOGOS = new Set([
 export function canFlipLogo(abbreviation: string): boolean {
   return !NO_FLIP_LOGOS.has(abbreviation);
 }
+
+// ============================================================
+// Stadium Names by Team
+// ============================================================
+
+const STADIUMS: Record<string, string> = {
+  ARI: 'State Farm Stadium',
+  ATL: 'Mercedes-Benz Stadium',
+  BAL: 'M&T Bank Stadium',
+  BUF: 'Highmark Stadium',
+  CAR: 'Bank of America Stadium',
+  CHI: 'Soldier Field',
+  CIN: 'Paycor Stadium',
+  CLE: 'Huntington Bank Field',
+  DAL: 'AT&T Stadium',
+  DEN: 'Empower Field at Mile High',
+  DET: 'Ford Field',
+  GB: 'Lambeau Field',
+  HOU: 'NRG Stadium',
+  IND: 'Lucas Oil Stadium',
+  JAX: 'EverBank Stadium',
+  KC: 'GEHA Field at Arrowhead Stadium',
+  LAC: 'SoFi Stadium',
+  LAR: 'SoFi Stadium',
+  LV: 'Allegiant Stadium',
+  MIA: 'Hard Rock Stadium',
+  MIN: 'U.S. Bank Stadium',
+  NE: 'Gillette Stadium',
+  NO: 'Caesars Superdome',
+  NYG: 'MetLife Stadium',
+  NYJ: 'MetLife Stadium',
+  PHI: 'Lincoln Financial Field',
+  PIT: 'Acrisure Stadium',
+  SEA: 'Lumen Field',
+  SF: 'Levi\'s Stadium',
+  TB: 'Raymond James Stadium',
+  TEN: 'Nissan Stadium',
+  WAS: 'Northwest Stadium',
+};
+
+/** Get the stadium name for a team by abbreviation. */
+export function getStadiumName(abbreviation: string): string {
+  return STADIUMS[abbreviation] ?? 'Stadium';
+}

@@ -232,7 +232,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
   const isCatchup = status === 'catchup';
 
   return (
-    <div className="min-h-dvh flex flex-col lg:h-dvh lg:overflow-hidden">
+    <div className="min-h-dvh flex flex-col lg:h-dvh lg:overflow-hidden pb-16 md:pb-0">
       {/* ── Top: Nav + ScoreBug (full width) ── */}
       <div className="flex-shrink-0">
         <GameNav
@@ -271,7 +271,7 @@ export function GameViewer({ gameId }: GameViewerProps) {
         {/* ═══ Left: Field + info strips (3/5 on desktop, full on mobile) ═══ */}
         <div className="flex flex-col lg:col-span-3 lg:min-h-0 lg:overflow-y-auto">
           {/* Field — fixed aspect on mobile so it's always visible */}
-          <div className="h-[180px] sm:h-[220px] lg:h-auto lg:min-h-[200px] lg:max-h-[45%] relative flex-shrink-0">
+          <div className="h-[220px] sm:h-[260px] lg:h-auto lg:min-h-[200px] lg:max-h-[45%] relative flex-shrink-0">
             <JumbotronOverlay />
             <FieldVisual
               ballPosition={gameState.ballPosition}
@@ -451,7 +451,7 @@ function GameNav({
         {onToggleBroadcaster && (
           <button
             onClick={onToggleBroadcaster}
-            className="w-7 h-7 rounded-md flex items-center justify-center transition-all duration-200"
+            className="w-9 h-9 rounded-md flex items-center justify-center transition-all duration-200"
             style={{
               background: isBroadcasterMuted ? 'rgba(17, 24, 39, 0.7)' : 'rgba(212, 175, 55, 0.15)',
               border: isBroadcasterMuted ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(212, 175, 55, 0.3)',
@@ -511,7 +511,7 @@ function GameNav({
         {onToggleAudio && (
           <button
             onClick={onToggleAudio}
-            className="w-7 h-7 rounded-md flex items-center justify-center transition-all duration-200"
+            className="w-9 h-9 rounded-md flex items-center justify-center transition-all duration-200"
             style={{
               background: isMuted ? 'rgba(17, 24, 39, 0.7)' : 'rgba(212, 175, 55, 0.15)',
               border: isMuted ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(212, 175, 55, 0.3)',
@@ -948,7 +948,7 @@ function QuarterBreakOverlay({
 
         {/* Top performers */}
         <div className="space-y-1">
-          <span className="text-[9px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
+          <span className="text-[10px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
           <div className="grid grid-cols-1 gap-0.5 text-[11px]">
             {topPasser && topPasser.passingYards > 0 && (
               <div className="flex justify-between">
@@ -1186,7 +1186,7 @@ function HalftimeReport({
 
         {/* Top performers */}
         <div className="space-y-1">
-          <span className="text-[9px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
+          <span className="text-[10px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
           <div className="grid grid-cols-1 gap-0.5 text-[11px]">
             {topPasser && topPasser.passingYards > 0 && (
               <div className="flex justify-between">
@@ -1317,7 +1317,7 @@ function TwoMinuteWarningOverlay({
 
         {/* Top performers */}
         <div className="space-y-1">
-          <span className="text-[9px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
+          <span className="text-[10px] font-black tracking-widest uppercase text-text-muted">Top Performers</span>
           <div className="grid grid-cols-1 gap-0.5 text-[11px]">
             {topPasser && topPasser.passingYards > 0 && (
               <div className="flex justify-between">

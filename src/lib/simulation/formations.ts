@@ -6,7 +6,7 @@
 // that affect sack rate, run success, play-action effectiveness, etc.
 // ============================================================================
 
-import type { GameState, Formation, PlayStyle, SeededRNG, WeightedOption } from './types';
+import type { GameState, Formation, FormationVariant, PlayStyle, SeededRNG, WeightedOption } from './types';
 
 // ============================================================================
 // Formation Modifier Data
@@ -189,6 +189,135 @@ export function selectFormation(
   // Normal down — base distribution modified by playStyle
   const baseWeights = getBaseFormationWeights(team.playStyle);
   return rng.weightedChoice(baseWeights);
+}
+
+// ============================================================================
+// Formation Variant System (Arians Playbook)
+// ============================================================================
+// Named variants map to base formations and add small modifier overlays.
+// Example: "trips_right" is a shotgun variant with a deep pass bonus.
+
+interface VariantData {
+  baseFormation: Formation;
+  modifiers: Partial<FormationModifiers>;
+}
+
+const VARIANT_DATA: Record<FormationVariant, VariantData> = {
+  trips_right: {
+    baseFormation: 'shotgun',
+    modifiers: { deepPassModifier: 1.05 },
+  },
+  trips_left: {
+    baseFormation: 'shotgun',
+    modifiers: { deepPassModifier: 1.05 },
+  },
+  trey: {
+    baseFormation: 'singleback',
+    modifiers: { playActionBonus: 1.15, runYardBonus: 0.3 },
+  },
+  bunch: {
+    baseFormation: 'shotgun',
+    modifiers: { screenBonus: 1.1, quickReleaseBonus: 1.05 },
+  },
+  dice: {
+    baseFormation: 'spread',
+    modifiers: { deepPassModifier: 1.05 },
+  },
+  firm: {
+    baseFormation: 'under_center',
+    modifiers: { runYardBonus: 0.3, playActionBonus: 1.2 },
+  },
+  fax: {
+    baseFormation: 'under_center',
+    modifiers: {},
+  },
+  weak: {
+    baseFormation: 'singleback',
+    modifiers: { runYardBonus: 0.2 },
+  },
+};
+
+/**
+ * Get the base formation for a variant. Used when the play resolution needs
+ * the base formation type (e.g., for sack rate, scramble rate calculations).
+ */
+export function getVariantBaseFormation(variant: FormationVariant): Formation {
+  return VARIANT_DATA[variant].baseFormation;
+}
+
+/**
+ * Get combined modifiers for a base formation plus an optional variant overlay.
+ * Variant modifiers are applied multiplicatively (for multipliers) or additively
+ * (for bonuses) on top of the base formation modifiers.
+ */
+export function getFormationModifiersWithVariant(
+  formation: Formation,
+  variant?: FormationVariant | null,
+): FormationModifiers {
+  const base = { ...FORMATION_DATA[formation] };
+
+  if (!variant) return base;
+
+  const vMods = VARIANT_DATA[variant].modifiers;
+
+  // Apply variant overrides — multipliers are multiplicative, bonuses are additive
+  if (vMods.sackRateMultiplier !== undefined) base.sackRateMultiplier *= vMods.sackRateMultiplier;
+  if (vMods.runYardBonus !== undefined) base.runYardBonus += vMods.runYardBonus;
+  if (vMods.playActionBonus !== undefined) base.playActionBonus *= vMods.playActionBonus;
+  if (vMods.scrambleMultiplier !== undefined) base.scrambleMultiplier *= vMods.scrambleMultiplier;
+  if (vMods.screenBonus !== undefined) base.screenBonus *= vMods.screenBonus;
+  if (vMods.deepPassModifier !== undefined) base.deepPassModifier *= vMods.deepPassModifier;
+  if (vMods.quickReleaseBonus !== undefined) base.quickReleaseBonus *= vMods.quickReleaseBonus;
+
+  return base;
+}
+
+/**
+ * Select a formation variant based on the base formation and situation.
+ * Returns null if no variant is selected (~40% of plays use a named variant).
+ */
+export function selectFormationVariant(
+  formation: Formation,
+  rng: SeededRNG,
+): FormationVariant | null {
+  // Only certain base formations have named variants
+  const variantPool: WeightedOption<FormationVariant | null>[] = [];
+
+  switch (formation) {
+    case 'shotgun':
+      variantPool.push(
+        { value: null, weight: 40 },
+        { value: 'trips_right', weight: 20 },
+        { value: 'trips_left', weight: 15 },
+        { value: 'bunch', weight: 25 },
+      );
+      break;
+    case 'singleback':
+      variantPool.push(
+        { value: null, weight: 45 },
+        { value: 'trey', weight: 30 },
+        { value: 'weak', weight: 25 },
+      );
+      break;
+    case 'under_center':
+      variantPool.push(
+        { value: null, weight: 40 },
+        { value: 'firm', weight: 35 },
+        { value: 'fax', weight: 25 },
+      );
+      break;
+    case 'spread':
+      variantPool.push(
+        { value: null, weight: 55 },
+        { value: 'dice', weight: 45 },
+      );
+      break;
+    default:
+      // i_formation, pistol, goal_line, empty, wildcat — no variants
+      return null;
+  }
+
+  return rng.weightedChoice(variantPool);
 }
 
 function getBaseFormationWeights(playStyle: PlayStyle): WeightedOption<Formation>[] {

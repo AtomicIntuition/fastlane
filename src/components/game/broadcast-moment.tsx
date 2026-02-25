@@ -90,7 +90,7 @@ export function BroadcastMoment({
     >
       <div className="flex items-center gap-2">
         <span
-          className="text-[9px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded flex-shrink-0"
+          className="text-[10px] font-black tracking-widest uppercase px-1.5 py-0.5 rounded flex-shrink-0"
           style={{
             backgroundColor: `${card.accent ?? '#60a5fa'}20`,
             color: card.accent ?? '#60a5fa',

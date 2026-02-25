@@ -277,11 +277,11 @@ export function ScoreBug({ gameState, status }: ScoreBugProps) {
             <span className="font-mono text-xl font-black tabular-nums text-text-primary mt-0.5 leading-tight">
               {isHalftime ? 'HALF' : clockDisplay}
             </span>
-            <span className="text-[9px] font-bold text-text-muted tracking-widest uppercase">
+            <span className="text-[10px] font-bold text-text-muted tracking-widest uppercase">
               {formatQuarter(quarter)}
             </span>
             {weatherInfo && (
-              <span className="text-[9px] text-text-muted">
+              <span className="text-[10px] text-text-muted">
                 {weatherEmoji[weatherInfo.type] || ''} {weatherInfo.temperature}°F
               </span>
             )}
@@ -379,7 +379,7 @@ function TimeoutDots({
   color: string;
   size?: 'sm' | 'md';
 }) {
-  const dotSize = size === 'sm' ? 'w-1.5 h-1.5' : 'w-2.5 h-2.5';
+  const dotSize = size === 'sm' ? 'w-2 h-2' : 'w-2.5 h-2.5';
 
   return (
     <div className="flex items-center gap-1">

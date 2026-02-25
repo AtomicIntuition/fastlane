@@ -154,6 +154,11 @@ export function FieldVisual({
     return null;
   }, [lastPlay]);
 
+  const turnoverKind = useMemo(() => {
+    if (!lastPlay?.turnover) return null;
+    return lastPlay.turnover.type as 'interception' | 'fumble' | 'fumble_recovery' | 'turnover_on_downs';
+  }, [lastPlay]);
+
   // ── Pregame intro + coin flip state ──────────────────
   // Shows matchup intro → coin flip ceremony at game start.
   // Detection strategy: uses quarter + clock (deterministic) instead of
@@ -387,12 +392,15 @@ export function FieldVisual({
           highlightKey={highlightKey}
         />
 
-        {/* z-21: Play call overlay */}
+        {/* z-21: Play call overlay with tension indicators */}
         <PlayCallOverlay
           formation={lastPlay?.formation ?? null}
+          formationVariant={lastPlay?.formationVariant ?? null}
           defensiveCall={lastPlay?.defensiveCall ?? null}
           playCall={lastPlay?.call ?? null}
           visible={playPhase === 'pre_snap'}
+          down={down}
+          ballPosition={ballPosition}
         />
 
         {/* z-22: Crowd atmosphere edge effects */}
@@ -413,6 +421,7 @@ export function FieldVisual({
           awayTeam={awayTeam}
           homeTeam={homeTeam}
           onComplete={handleMatchupIntroComplete}
+          weather={weather}
         />
 
         {/* Coin flip overlay */}
@@ -427,6 +436,7 @@ export function FieldVisual({
           type={celebType}
           teamColor={possessingTeam.primaryColor}
           celebKey={celebKey}
+          turnoverKind={turnoverKind}
         />
       </div>
     </div>

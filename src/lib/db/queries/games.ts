@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
-import { games, teams, gameEvents } from "@/lib/db/schema";
-import { eq, and, desc, asc } from "drizzle-orm";
+import { games } from "@/lib/db/schema";
+import { eq, and, desc } from "drizzle-orm";
+import { getTeamMap } from "./teams";
 
 /** Get a game by ID with team data */
 export async function getGameById(gameId: string) {
@@ -13,23 +14,13 @@ export async function getGameById(gameId: string) {
   if (result.length === 0) return null;
 
   const game = result[0];
+  const teamMap = await getTeamMap();
 
-  const [homeTeam, awayTeam] = await Promise.all([
-    db
-      .select()
-      .from(teams)
-      .where(eq(teams.id, game.homeTeamId))
-      .limit(1)
-      .then((r) => r[0] ?? null),
-    db
-      .select()
-      .from(teams)
-      .where(eq(teams.id, game.awayTeamId))
-      .limit(1)
-      .then((r) => r[0] ?? null),
-  ]);
-
-  return { ...game, homeTeam, awayTeam };
+  return {
+    ...game,
+    homeTeam: teamMap.get(game.homeTeamId) ?? null,
+    awayTeam: teamMap.get(game.awayTeamId) ?? null,
+  };
 }
 
 /** Get the current live game (broadcasting status) */
@@ -75,15 +66,8 @@ export async function getGamesByWeek(seasonId: string, week: number) {
     .from(games)
     .where(and(eq(games.seasonId, seasonId), eq(games.week, week)));
 
-  // Hydrate with team data
-  const teamIds = new Set<string>();
-  result.forEach((g) => {
-    teamIds.add(g.homeTeamId);
-    teamIds.add(g.awayTeamId);
-  });
-
-  const allTeams = await db.select().from(teams);
-  const teamMap = new Map(allTeams.map((t) => [t.id, t]));
+  // Hydrate with team data (cached)
+  const teamMap = await getTeamMap();
 
   return result.map((g) => ({
     ...g,
@@ -103,8 +87,7 @@ export async function getTeamGames(seasonId: string, teamId: string) {
     (g) => g.homeTeamId === teamId || g.awayTeamId === teamId
   );
 
-  const allTeams = await db.select().from(teams);
-  const teamMap = new Map(allTeams.map((t) => [t.id, t]));
+  const teamMap = await getTeamMap();
 
   return teamGames.map((g) => ({
     ...g,

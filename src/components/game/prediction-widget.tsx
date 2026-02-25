@@ -141,7 +141,7 @@ function PregameForm({
         <button
           onClick={() => setSelectedWinner('away')}
           className={`
-            relative rounded-lg border p-3 transition-all duration-200
+            relative rounded-lg border p-4 transition-all duration-200
             ${
               selectedWinner === 'away'
                 ? 'border-white/30 bg-white/10 ring-1 ring-white/20'
@@ -169,7 +169,7 @@ function PregameForm({
         <button
           onClick={() => setSelectedWinner('home')}
           className={`
-            relative rounded-lg border p-3 transition-all duration-200
+            relative rounded-lg border p-4 transition-all duration-200
             ${
               selectedWinner === 'home'
                 ? 'border-white/30 bg-white/10 ring-1 ring-white/20'
@@ -198,7 +198,7 @@ function PregameForm({
       {/* Score prediction inputs */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[9px] font-semibold uppercase tracking-widest text-text-muted block mb-1">
+          <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted block mb-1">
             {awayTeam.abbreviation} Score
           </label>
           <input
@@ -208,11 +208,11 @@ function PregameForm({
             value={awayScore}
             onChange={(e) => setAwayScore(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-elevated/60 border border-border/50 rounded-md px-3 py-1.5 text-center text-sm font-mono font-bold text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:ring-1 focus:ring-gold/40 focus:border-gold/40 transition-colors"
+            className="w-full bg-surface-elevated/60 border border-border/50 rounded-md px-3 py-2.5 text-center text-sm font-mono font-bold text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:ring-1 focus:ring-gold/40 focus:border-gold/40 transition-colors"
           />
         </div>
         <div>
-          <label className="text-[9px] font-semibold uppercase tracking-widest text-text-muted block mb-1">
+          <label className="text-[10px] font-semibold uppercase tracking-widest text-text-muted block mb-1">
             {homeTeam.abbreviation} Score
           </label>
           <input
@@ -222,7 +222,7 @@ function PregameForm({
             value={homeScore}
             onChange={(e) => setHomeScore(e.target.value)}
             placeholder="0"
-            className="w-full bg-surface-elevated/60 border border-border/50 rounded-md px-3 py-1.5 text-center text-sm font-mono font-bold text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:ring-1 focus:ring-gold/40 focus:border-gold/40 transition-colors"
+            className="w-full bg-surface-elevated/60 border border-border/50 rounded-md px-3 py-2.5 text-center text-sm font-mono font-bold text-text-primary placeholder:text-text-muted/40 focus:outline-none focus:ring-1 focus:ring-gold/40 focus:border-gold/40 transition-colors"
           />
         </div>
       </div>
@@ -232,7 +232,7 @@ function PregameForm({
         onClick={handleSubmit}
         disabled={!canSubmit}
         className={`
-          w-full rounded-lg py-2 text-xs font-bold uppercase tracking-wider transition-all duration-200
+          w-full rounded-lg py-3 text-sm font-bold uppercase tracking-wider transition-all duration-200
           ${
             canSubmit
               ? 'bg-gold/20 text-gold border border-gold/30 hover:bg-gold/30 cursor-pointer'
@@ -274,7 +274,7 @@ function PredictionLocked({
       <div className="text-xs text-text-secondary font-mono tabular-nums">
         Predicted score: {awayTeam.abbreviation} {prediction.predictedAwayScore} - {homeTeam.abbreviation} {prediction.predictedHomeScore}
       </div>
-      <p className="text-[10px] text-text-muted">
+      <p className="text-[11px] text-text-muted">
         Your prediction is locked in. Watch the game to see how it plays out.
       </p>
     </div>
@@ -359,7 +359,7 @@ function LiveProbability({
       {/* User prediction indicator */}
       {userPrediction && (
         <div className="flex items-center gap-2 pt-1 border-t border-border/30">
-          <span className="text-[9px] font-semibold uppercase tracking-widest text-text-muted">
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">
             Your pick
           </span>
           <div

@@ -157,7 +157,7 @@ export function GameOverSummary({
                 <div className="text-sm font-mono font-black text-gold tabular-nums">
                   {stat.value}
                 </div>
-                <div className="text-[9px] text-text-muted font-medium uppercase tracking-wider">
+                <div className="text-[10px] text-text-muted font-medium uppercase tracking-wider">
                   {stat.label}
                 </div>
               </div>

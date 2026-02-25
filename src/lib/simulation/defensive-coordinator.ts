@@ -95,11 +95,11 @@ const PERSONNEL_MODIFIERS: Record<DefensivePersonnel, DefensiveModifiers> = {
   },
   prevent: {
     sackRateMultiplier: 0.7,
-    shortCompletionModifier: 1.0,
-    mediumCompletionModifier: 1.0,
-    deepCompletionModifier: 1.0,
+    shortCompletionModifier: 1.15, // Give up underneath
+    mediumCompletionModifier: 0.90,
+    deepCompletionModifier: 0.70, // Primary purpose: prevent deep completions
     runYardModifier: 1.3,
-    screenModifier: 1.0,
+    screenModifier: 1.2, // Vulnerable to screens
     extraRushers: 0,
   },
 };

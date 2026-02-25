@@ -262,21 +262,23 @@ export default async function HomePage() {
       <>
         <Header />
         <main className="min-h-screen flex items-center justify-center px-4">
-          <div className="text-center max-w-md">
-            <div className="text-6xl mb-6">🏈</div>
-            <h1 className="text-3xl font-bold text-gold mb-4">
-              GridIron Live
+          <div className="text-center max-w-lg">
+            <div className="text-7xl mb-6">🏈</div>
+            <h1 className="text-4xl sm:text-5xl font-black text-text-primary mb-3 tracking-tight">
+              GridIron <span className="text-gold">Live</span>
             </h1>
-            <p className="text-text-secondary text-lg mb-8">
-              The always-on NFL simulation is warming up. The first season is
-              about to kick off.
+            <p className="text-lg text-text-secondary mb-2">
+              The always-on NFL simulation.
             </p>
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-surface-elevated rounded-full border border-border">
+            <p className="text-sm text-text-muted mb-10 max-w-sm mx-auto">
+              Every play. Every game. Every week. A full 18-week season with playoffs through the Super Bowl, broadcasting 24/7.
+            </p>
+            <div className="inline-flex items-center gap-2 px-5 py-2.5 bg-surface-elevated rounded-full border border-gold/20">
               <span className="relative flex h-2 w-2">
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-gold opacity-75" />
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-gold" />
               </span>
-              <span className="text-sm text-text-secondary">
+              <span className="text-sm text-gold font-medium">
                 Generating Season 1...
               </span>
             </div>
@@ -381,7 +383,7 @@ export default async function HomePage() {
               Schedule
             </Link>
             <Link
-              href={ROUTES.SCHEDULE}
+              href={ROUTES.STANDINGS}
               className="inline-flex items-center px-4 py-2 bg-surface-elevated text-text-secondary text-xs font-bold rounded-full whitespace-nowrap border border-border hover:border-border-bright transition-colors"
             >
               Standings
@@ -495,7 +497,7 @@ export default async function HomePage() {
               Standings
             </h2>
             <Link
-              href={ROUTES.SCHEDULE}
+              href={ROUTES.STANDINGS}
               className="text-sm font-medium text-gold hover:text-gold-bright transition-colors"
             >
               Full Standings &rarr;
@@ -1104,18 +1106,26 @@ function WeekCompleteHero({
       <p className="text-text-muted text-sm tracking-wider uppercase mb-2">
         Week {season.currentWeek} Complete
       </p>
-      <h2 className="text-2xl sm:text-3xl font-bold mb-4">
+      <h2 className="text-2xl sm:text-3xl font-bold mb-3">
         All games have been played
       </h2>
       <p className="text-text-secondary max-w-md mx-auto mb-6">
-        The next week of action is coming soon.
+        Check the standings to see who&apos;s rising and who&apos;s falling. Next week kicks off soon.
       </p>
-      <Link
-        href={ROUTES.SCHEDULE}
-        className="inline-flex items-center gap-2 px-6 py-2.5 bg-surface-elevated text-text-primary font-bold text-sm rounded-full hover:bg-surface-hover transition-colors border border-border"
-      >
-        View Full Schedule &rarr;
-      </Link>
+      <div className="flex flex-wrap gap-3 justify-center">
+        <Link
+          href={ROUTES.STANDINGS}
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-gold text-midnight font-bold text-sm rounded-full hover:bg-gold-bright transition-colors shadow-lg shadow-gold/20"
+        >
+          View Standings
+        </Link>
+        <Link
+          href={ROUTES.SCHEDULE}
+          className="inline-flex items-center gap-2 px-6 py-2.5 bg-surface-elevated text-text-primary font-bold text-sm rounded-full hover:bg-surface-hover transition-colors border border-border"
+        >
+          Full Schedule &rarr;
+        </Link>
+      </div>
     </Card>
   );
 }

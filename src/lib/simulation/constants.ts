@@ -162,6 +162,11 @@ export function getFieldGoalAccuracy(distanceYards: number): number {
   return 0;
 }
 
+/** Teams that play in domed/retractable roof stadiums (always clear weather at home) */
+export const DOME_TEAMS = [
+  'MIN', 'DET', 'ATL', 'IND', 'NO', 'LV', 'ARI', 'DAL', 'HOU', 'LAR', 'LAC',
+] as const;
+
 /** Field goal block rate (~1.5% of FG attempts in the NFL) */
 export const FIELD_GOAL_BLOCK_RATE = 0.015;
 

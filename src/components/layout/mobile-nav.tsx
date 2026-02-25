@@ -163,7 +163,7 @@ export function MobileNav({ isLive = false }: MobileNavProps) {
               </div>
               <span
                 className={`
-                  text-[10px] mt-0.5 font-medium
+                  text-[11px] mt-0.5 font-medium
                   ${active ? 'text-gold' : 'text-text-muted'}
                 `}
               >

@@ -8,17 +8,22 @@ import {
   formatFieldPosition,
   formatClock,
 } from '@/lib/utils/formatting';
+import { getTeamScoreboardLogoUrl } from '@/lib/utils/team-logos';
 
 interface PlayFeedProps {
   events: GameEvent[];
   isLive: boolean;
 }
 
+/** Number of plays rendered per batch (initial + each "load more") */
+const BATCH_SIZE = 50;
+
 export function PlayFeed({ events, isLive }: PlayFeedProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isAtTop, setIsAtTop] = useState(true);
   const [unseenCount, setUnseenCount] = useState(0);
   const lastSeenCount = useRef(0);
+  const [visibleCount, setVisibleCount] = useState(BATCH_SIZE);
 
   // Filter out touchbacks for cleaner feed, keep scoring plays
   const displayEvents = events.filter(
@@ -30,6 +35,22 @@ export function PlayFeed({ events, isLive }: PlayFeedProps) {
 
   // Reverse chronological — newest play at top
   const reversedEvents = [...displayEvents].reverse();
+
+  // Only render up to `visibleCount` items to avoid DOM bloat on long games
+  const renderedEvents = reversedEvents.slice(0, visibleCount);
+  const hasMoreEvents = visibleCount < reversedEvents.length;
+  const hiddenCount = reversedEvents.length - visibleCount;
+
+  // Reset visible count when events list is small (e.g. new game started)
+  useEffect(() => {
+    if (reversedEvents.length <= BATCH_SIZE) {
+      setVisibleCount(BATCH_SIZE);
+    }
+  }, [reversedEvents.length]);
+
+  const loadMore = useCallback(() => {
+    setVisibleCount((prev) => Math.min(prev + BATCH_SIZE, reversedEvents.length));
+  }, [reversedEvents.length]);
 
   // Track unseen plays when user has scrolled down
   useEffect(() => {
@@ -68,14 +89,57 @@ export function PlayFeed({ events, isLive }: PlayFeedProps) {
           </div>
         )}
 
-        {reversedEvents.map((event, idx) => (
-          <PlayCard
-            key={event.eventNumber}
-            event={event}
-            isNew={isLive && idx === 0}
-            isFeatured={idx === 0}
-          />
-        ))}
+        {renderedEvents.map((event, idx) => {
+          // Drive separator: show between plays when possession changes
+          const nextEvent = renderedEvents[idx + 1]; // next = older play (reverse order)
+          const showDriveSep = nextEvent &&
+            nextEvent.gameState.possession !== event.gameState.possession;
+
+          // Determine drive result for separator label
+          const getDriveSepLabel = (): string => {
+            // The current event is NEWER — it's the first play of the new drive
+            // The nextEvent is the LAST play of the old drive
+            const lastPlay = nextEvent?.playResult;
+            if (!lastPlay) return 'CHANGE OF POSSESSION';
+            if (lastPlay.isTouchdown) return 'TOUCHDOWN';
+            if (lastPlay.scoring?.type === 'field_goal') return 'FIELD GOAL';
+            if (lastPlay.scoring?.type === 'safety') return 'SAFETY';
+            if (lastPlay.turnover?.type === 'interception') return 'INTERCEPTION';
+            if (lastPlay.turnover?.type === 'fumble') return 'FUMBLE RECOVERY';
+            if (lastPlay.turnover?.type === 'turnover_on_downs') return 'TURNOVER ON DOWNS';
+            if (lastPlay.type === 'punt') return 'PUNT';
+            return 'CHANGE OF POSSESSION';
+          };
+
+          return (
+            <div key={event.eventNumber}>
+              <PlayCard
+                event={event}
+                isNew={isLive && idx === 0}
+                isFeatured={idx === 0}
+              />
+              {showDriveSep && (
+                <div className="flex items-center gap-2 py-1.5 px-1">
+                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+                  <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-text-muted/60 whitespace-nowrap">
+                    {getDriveSepLabel()}
+                  </span>
+                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border to-transparent" />
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Load older plays button */}
+        {hasMoreEvents && (
+          <button
+            onClick={loadMore}
+            className="w-full py-2.5 rounded-lg border border-border/50 bg-surface/30 text-text-muted hover:text-text-secondary hover:bg-surface/60 hover:border-border transition-colors text-xs font-medium"
+          >
+            Load older plays ({hiddenCount} more)
+          </button>
+        )}
       </div>
 
       {/* Scroll-to-top pill when new plays arrive while scrolled down */}
@@ -124,6 +188,10 @@ function PlayCard({ event, isNew, isFeatured = false }: PlayCardProps) {
 
   const clockText = `Q${gameState.quarter === 'OT' ? 'OT' : gameState.quarter} ${formatClock(gameState.clock)}`;
 
+  // Get offensive team logo
+  const offensiveTeam = gameState.possession === 'home' ? gameState.homeTeam : gameState.awayTeam;
+  const logoUrl = getTeamScoreboardLogoUrl(offensiveTeam.abbreviation);
+
   return (
     <div
       className={`
@@ -140,12 +208,20 @@ function PlayCard({ event, isNew, isFeatured = false }: PlayCardProps) {
         {/* Header: situation + yards */}
         <div className="flex items-center justify-between gap-2 mb-1.5">
           <div className="flex items-center gap-2 min-w-0 flex-1">
-            <span className={`font-mono text-text-muted tabular-nums flex-shrink-0 ${isFeatured ? 'text-[11px]' : 'text-[10px]'}`}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={logoUrl}
+              alt={offensiveTeam.abbreviation}
+              width={isFeatured ? 18 : 14}
+              height={isFeatured ? 18 : 14}
+              className="flex-shrink-0 rounded-sm"
+            />
+            <span className={`font-mono text-text-muted tabular-nums flex-shrink-0 ${isFeatured ? 'text-[12px]' : 'text-[11px]'}`}>
               {clockText}
             </span>
             {badge && (
               <span
-                className={`font-black tracking-widest uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${isFeatured ? 'text-[10px]' : 'text-[9px]'}`}
+                className={`font-black tracking-widest uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${isFeatured ? 'text-[11px]' : 'text-[10px]'}`}
                 style={{
                   backgroundColor: `${borderColor}20`,
                   color: borderColor,
@@ -200,7 +276,7 @@ function PlayCard({ event, isNew, isFeatured = false }: PlayCardProps) {
         )}
 
         {/* Play details footer */}
-        <div className={`flex items-center gap-2 mt-2 text-text-muted ${isFeatured ? 'text-[11px]' : 'text-[10px]'}`}>
+        <div className={`flex items-center gap-2 mt-2 text-text-muted ${isFeatured ? 'text-[11px]' : 'text-[11px]'}`}>
           {playResult.type !== 'kickoff' &&
             playResult.type !== 'punt' &&
             playResult.type !== 'extra_point' && (

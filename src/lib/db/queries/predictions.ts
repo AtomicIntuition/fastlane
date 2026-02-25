@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { predictions, games } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 /** Get a user's prediction for a game */
 export async function getUserPrediction(userId: string, gameId: string) {
@@ -65,44 +65,23 @@ export async function scorePredictions(
   homeScore: number,
   awayScore: number
 ) {
-  const gamePredictions = await db
-    .select()
-    .from(predictions)
-    .where(eq(predictions.gameId, gameId));
+  const actualMargin = Math.abs(homeScore - awayScore);
 
-  for (const pred of gamePredictions) {
-    let points = 0;
-    const isCorrectWinner = pred.predictedWinner === winnerId;
-
-    if (isCorrectWinner) {
-      points += 10; // Correct winner
-
-      // Check margin
-      const actualMargin = Math.abs(homeScore - awayScore);
-      const predictedMargin = Math.abs(
-        pred.predictedHomeScore - pred.predictedAwayScore
-      );
-      if (Math.abs(actualMargin - predictedMargin) <= 3) {
-        points += 5; // Correct margin (within 3)
-      }
-
-      // Check exact score
-      if (
-        pred.predictedHomeScore === homeScore &&
-        pred.predictedAwayScore === awayScore
-      ) {
-        points += 25; // Exact score bonus
-      }
-    }
-
-    await db
-      .update(predictions)
-      .set({
-        result: isCorrectWinner ? "won" : "lost",
-        pointsEarned: points,
-      })
-      .where(eq(predictions.id, pred.id));
-  }
+  await db.execute(sql`
+    UPDATE predictions SET
+      result = CASE
+        WHEN predicted_winner = ${winnerId} THEN 'won'
+        ELSE 'lost'
+      END,
+      points_earned = CASE
+        WHEN predicted_winner != ${winnerId} THEN 0
+        WHEN predicted_home_score = ${homeScore}
+          AND predicted_away_score = ${awayScore} THEN 40
+        WHEN ABS(ABS(predicted_home_score - predicted_away_score) - ${actualMargin}) <= 3 THEN 15
+        ELSE 10
+      END
+    WHERE game_id = ${gameId}
+  `);
 }
 
 /** Get all predictions for a game */

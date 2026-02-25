@@ -172,7 +172,7 @@ CSS at `src/styles/globals.css` (imported from layout.tsx as `@/styles/globals.c
 
 ### User Identity
 
-Predictions and leaderboard use a cookie-based `userId` (via `x-user-id` header or `userId` cookie), not Clerk. `POST /api/user` creates/updates `userScores` rows with optional display names. Clerk is installed but not actively integrated.
+Predictions and leaderboard use a cookie-based `userId` (via `x-user-id` header or `userId` cookie). `POST /api/user` creates/updates `userScores` rows with optional display names.
 
 ## Key Gotchas
 
@@ -187,7 +187,6 @@ Predictions and leaderboard use a cookie-based `userId` (via `x-user-id` header 
 - **`drizzle-kit push` may crash** on this DB due to a drizzle-kit bug with CHECK constraints. Apply migrations directly via SQL: `sql.unsafe('ALTER TABLE ...')`
 - **`maxDuration: 300`** on simulate route — games can take up to 5 minutes to simulate
 - **`seasons.totalWeeks` defaults to 22** (18 regular + 4 playoff weeks), not 18
-- **Clerk is installed but unused** — user identity is cookie-based; no `<ClerkProvider>` in layout, no middleware
 - **Playbook fields are all optional** — `personnelGrouping`, `routeConcept`, `front`, `runStunt`, `passRushGame` on PlayResult/DefensiveCall are optional; existing games in DB continue to work without them
 - **RNG draw order matters** — adding new `rng.next()` calls (e.g., for personnel/route selection) shifts the entire downstream RNG sequence, changing game outcomes; property tests verify determinism with fixed seeds
 
@@ -198,7 +197,6 @@ Required in `.env.local`:
 - `CRON_SECRET` — Authorizes simulation endpoint and admin APIs
 - `ANTHROPIC_API_KEY` — Commentary generation (graceful fallback if missing)
 - `NEXT_PUBLIC_APP_URL` — Base URL for the app
-- Clerk auth keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`) — installed but not yet active
 - Stripe keys (future monetization)
 
 ### Quarter Break Overlays

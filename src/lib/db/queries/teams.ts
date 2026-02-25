@@ -2,9 +2,31 @@ import { db } from "@/lib/db";
 import { teams, players, standings } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 
-/** Get all 32 teams */
-export async function getAllTeams() {
+// In-memory cache for all teams (32 rows, essentially static)
+const TEAM_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let teamCache: Awaited<ReturnType<typeof fetchAllTeams>> | null = null;
+let teamCacheTimestamp = 0;
+
+async function fetchAllTeams() {
   return db.select().from(teams);
+}
+
+/** Get all 32 teams (cached for 5 minutes) */
+export async function getAllTeams() {
+  const now = Date.now();
+  if (teamCache && now - teamCacheTimestamp < TEAM_CACHE_TTL_MS) {
+    return teamCache;
+  }
+  const result = await fetchAllTeams();
+  teamCache = result;
+  teamCacheTimestamp = now;
+  return result;
+}
+
+/** Build a Map of teamId -> team from cached data */
+export async function getTeamMap() {
+  const allTeams = await getAllTeams();
+  return new Map(allTeams.map((t) => [t.id, t]));
 }
 
 /** Get a team by ID */
@@ -44,9 +66,8 @@ export async function getStandings(seasonId: string) {
     .from(standings)
     .where(eq(standings.seasonId, seasonId));
 
-  // Hydrate with team data
-  const allTeams = await getAllTeams();
-  const teamMap = new Map(allTeams.map((t) => [t.id, t]));
+  // Hydrate with team data (cached)
+  const teamMap = await getTeamMap();
 
   return result.map((s) => ({
     ...s,

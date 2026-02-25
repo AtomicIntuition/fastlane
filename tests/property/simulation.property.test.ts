@@ -220,4 +220,103 @@ describe('Simulation Property Tests', () => {
       { numRuns: 3 },
     );
   });
+
+  // -----------------------------------------------------------------------
+  // 10. Interception rate is within realistic NFL bounds (1.5%–4.0%)
+  // -----------------------------------------------------------------------
+  it('aggregate interception rate is within NFL-realistic bounds', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.tuple(
+            fc.string({ minLength: 16, maxLength: 64 }),
+            fc.string({ minLength: 8, maxLength: 32 }),
+          ),
+          { minLength: 10, maxLength: 10 },
+        ),
+        (seedPairs) => {
+          let totalPassAttempts = 0;
+          let totalInterceptions = 0;
+
+          for (const [serverSeed, clientSeed] of seedPairs) {
+            const game = simulateGame(buildConfig(serverSeed, clientSeed));
+
+            for (const event of game.events) {
+              const { type, turnover } = event.playResult;
+
+              // Count pass attempts: completions, incompletions (includes INTs and drops)
+              if (type === 'pass_complete' || type === 'pass_incomplete') {
+                totalPassAttempts++;
+              }
+
+              // Count interceptions
+              if (turnover?.type === 'interception') {
+                totalInterceptions++;
+              }
+            }
+          }
+
+          // Need a minimum sample size for statistical significance
+          expect(totalPassAttempts).toBeGreaterThan(100);
+
+          const intRate = totalInterceptions / totalPassAttempts;
+
+          // NFL average INT rate is ~2.3-2.5%; allow 1.5%-4.0% for simulation variance
+          expect(intRate).toBeGreaterThanOrEqual(0.015);
+          expect(intRate).toBeLessThanOrEqual(0.04);
+        },
+      ),
+      { numRuns: 3 },
+    );
+  });
+
+  // -----------------------------------------------------------------------
+  // 11. Dropped pass rate is within realistic NFL bounds (1%–7%)
+  // -----------------------------------------------------------------------
+  it('aggregate drop rate is within NFL-realistic bounds', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.tuple(
+            fc.string({ minLength: 16, maxLength: 64 }),
+            fc.string({ minLength: 8, maxLength: 32 }),
+          ),
+          { minLength: 10, maxLength: 10 },
+        ),
+        (seedPairs) => {
+          let totalCatchable = 0; // completions + drops (passes that reached the receiver)
+          let totalDrops = 0;
+
+          for (const [serverSeed, clientSeed] of seedPairs) {
+            const game = simulateGame(buildConfig(serverSeed, clientSeed));
+
+            for (const event of game.events) {
+              const { type, dropped } = event.playResult;
+
+              // Completions count as catchable
+              if (type === 'pass_complete') {
+                totalCatchable++;
+              }
+
+              // Drops are catchable passes that were not held onto
+              if (dropped) {
+                totalCatchable++;
+                totalDrops++;
+              }
+            }
+          }
+
+          // Need a minimum sample size for statistical significance
+          expect(totalCatchable).toBeGreaterThan(100);
+
+          const dropRate = totalDrops / totalCatchable;
+
+          // NFL average drop rate is ~3.5%; allow 1%-7% for simulation variance
+          expect(dropRate).toBeGreaterThanOrEqual(0.01);
+          expect(dropRate).toBeLessThanOrEqual(0.07);
+        },
+      ),
+      { numRuns: 3 },
+    );
+  });
 });

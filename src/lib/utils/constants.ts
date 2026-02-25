@@ -8,8 +8,11 @@ export const ROUTES = {
   HOME: "/",
   GAME: (gameId: string) => `/game/${gameId}`,
   SCHEDULE: "/schedule",
+  STANDINGS: "/standings",
+  TEAMS: "/teams",
   TEAM: (teamId: string) => `/teams/${teamId}`,
   LEADERBOARD: "/leaderboard",
+  LIVE: "/live",
   VERIFY: (gameId: string) => `/verify/${gameId}`,
 } as const;
 

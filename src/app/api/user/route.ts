@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { userScores } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+import { getUserIdFromRequest } from '@/lib/utils/signed-cookie';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,9 +45,8 @@ export async function GET(request: NextRequest) {
  * Header: x-user-id: string
  */
 export async function POST(request: NextRequest) {
-  const userId =
-    request.headers.get('x-user-id') ??
-    request.cookies.get('userId')?.value;
+  // Get user ID from signed cookie (with legacy fallback)
+  const userId = getUserIdFromRequest(request);
 
   if (!userId) {
     return NextResponse.json({ error: 'userId required' }, { status: 401 });

@@ -45,6 +45,7 @@ import { selectPlay } from './play-caller';
 import { resolvePlay } from './play-generator';
 import { selectFormation } from './formations';
 import { callDefense } from './defensive-coordinator';
+import { selectOffensiveCall as selectOffCall, getOffensiveModifiers as getOffensiveMods } from './offensive-coordinator';
 import { selectPersonnelGrouping, selectFormationWithPersonnel } from './personnel';
 import { selectRouteConcept } from './route-concepts';
 import type { PlayCall } from './types';
@@ -137,6 +138,7 @@ import {
   REALTIME_TWO_MINUTE_WARNING_MS,
   REALTIME_TOUCHDOWN_BONUS_MS,
   REALTIME_TURNOVER_BONUS_MS,
+  DOME_TEAMS,
 } from './constants';
 
 // ============================================================================
@@ -286,7 +288,24 @@ export interface WeatherModifiers {
  * Generate deterministic weather conditions for a game.
  * Uses the seeded RNG so the same seeds always produce the same weather.
  */
-function generateWeather(rng: { random(): number; gaussian(mean: number, stdDev: number, min?: number, max?: number): number; randomFloat(min: number, max: number): number; weightedChoice<T>(options: { value: T; weight: number }[]): T }): WeatherConditions {
+function generateWeather(rng: { random(): number; gaussian(mean: number, stdDev: number, min?: number, max?: number): number; randomFloat(min: number, max: number): number; weightedChoice<T>(options: { value: T; weight: number }[]): T }, homeTeamAbbr?: string): WeatherConditions {
+  // Dome teams always play indoors at home
+  const isDome = homeTeamAbbr && DOME_TEAMS.includes(homeTeamAbbr as typeof DOME_TEAMS[number]);
+
+  if (isDome) {
+    // Still consume RNG draws to maintain determinism for downstream calls
+    rng.random(); // would have been weather type
+    rng.random(); // would have been temperature
+    rng.random(); rng.random(); // would have been wind
+    return {
+      type: 'clear',
+      temperature: 72,
+      windSpeed: 0,
+      precipitation: 0,
+      description: 'Indoor stadium, 72°F, climate controlled',
+    };
+  }
+
   // Pick weather type with weighted distribution
   let type = rng.weightedChoice<WeatherType>([
     { value: 'clear',  weight: 40 },
@@ -428,7 +447,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
   // ========================================================================
   // 1b. GENERATE WEATHER
   // ========================================================================
-  const weather = generateWeather(rng);
+  const weather = generateWeather(rng, config.homeTeam.abbreviation);
   const weatherMods = getWeatherModifiers(weather);
 
   // ========================================================================
@@ -616,6 +635,19 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
       ? selectRouteConcept(playCall, defensiveCall, rng)
       : undefined;
 
+    // --- (b4) Offensive coordinator call (protection, motion, run scheme) ---
+    const offensiveCall = (formation && !state.kickoff && !state.patAttempt &&
+      playCall !== 'kickoff_normal' && playCall !== 'onside_kick' &&
+      playCall !== 'punt' && playCall !== 'field_goal' && playCall !== 'extra_point' &&
+      playCall !== 'kneel' && playCall !== 'spike')
+      ? selectOffCall(state, playCall, personnelGrouping ?? '11', formation, routeConcept ?? null, defensiveCall, rng)
+      : undefined;
+
+    // --- (b5) Compute offensive modifiers from offensive call ---
+    const offensiveMods = offensiveCall
+      ? getOffensiveMods(offensiveCall, defensiveCall)
+      : undefined;
+
     // --- (c) Resolve the play based on type ---
     let playResult: PlayResult;
 
@@ -654,6 +686,7 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
         defensiveCall,
         routeConcept,
         weatherMods,
+        offensiveMods,
       );
 
       // Attach formation & defense data to PlayResult for UI rendering
@@ -661,6 +694,13 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
       if (defensiveCall) playResult.defensiveCall = defensiveCall;
       if (personnelGrouping) playResult.personnelGrouping = personnelGrouping;
       if (routeConcept) playResult.routeConcept = routeConcept;
+      if (offensiveCall) {
+        playResult.offensiveCall = offensiveCall;
+        if (offensiveCall.protectionScheme) playResult.protectionScheme = offensiveCall.protectionScheme;
+        if (offensiveCall.motionType) playResult.motionType = offensiveCall.motionType;
+        if (offensiveCall.runScheme) playResult.runScheme = offensiveCall.runScheme;
+        if (offensiveCall.formationVariant) playResult.formationVariant = offensiveCall.formationVariant;
+      }
     }
 
     // --- (d) Check for penalty ---
@@ -870,8 +910,9 @@ export function simulateGame(config: SimulationConfig): SimulatedGame {
           // Kickoff return TD
           state.ballPosition = 100;
         } else {
-          // Kickoff return: yardsGained is the return distance
-          state.ballPosition = calculateKickoffReturnPosition(playResult.yardsGained);
+          // Kickoff return: yardsGained is return distance, catchSpot from metadata
+          const catchSpot = playResult.kickoffMeta?.catchSpot ?? 0;
+          state.ballPosition = calculateKickoffReturnPosition(playResult.yardsGained, catchSpot);
         }
 
         state.down = 1;

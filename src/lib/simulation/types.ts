@@ -264,8 +264,55 @@ export type PersonnelGrouping = '00' | '10' | '11' | '12' | '13' | '21' | '22';
 export type RouteConcept =
   | 'hitch' | 'curl' | 'shake' | 'angle' | 'stick'       // short
   | 'semi' | 'bench' | 'drive' | 'cross' | 'blinky'      // medium
-  | 'go' | 'cab' | 'pylon' | 'x_ray' | 'delta'           // deep
+  | 'go' | 'cab' | 'pylon' | 'x_ray' | 'delta' | 'caddy' // deep
   | 'screen' | 'waggle';                                   // special
+
+/** Offensive protection scheme (Arians system). */
+export type ProtectionScheme =
+  | 'middle_62'        // Max protection, RB checks Mike/Sam
+  | 'blunt_80'         // Sprint-out/waggle, 4-5 step
+  | 'base_82'          // Standard 5-man dropback
+  | 'sort_83';         // Sort blocking vs 3-4 fronts
+
+/** Pre-snap motion type. */
+export type MotionType =
+  | 'fly'              // WR motions across formation
+  | 'peel'             // TE/RB peels to flat
+  | 'short'            // Short lateral motion
+  | 'cut'              // Motion then cut block
+  | 'shift';           // Pre-snap alignment shift
+
+/** Named run scheme. */
+export type RunScheme =
+  | 'inside_zone'      // Inside zone read
+  | 'outside_zone'     // Stretched zone
+  | 'power'            // Power blocking, pulling guard
+  | 'counter'          // Cutback/counter
+  | 'draw'             // Delayed handoff
+  | 'sweep';           // Perimeter attack
+
+/** Named formation variant (Arians playbook). Maps to a base formation with extra modifiers. */
+export type FormationVariant =
+  | 'trips_right'     // 3 WR right, 1 left — deep pass bonus
+  | 'trips_left'      // 3 WR left, 1 right — deep pass bonus
+  | 'trey'            // TE + 2 WR same side — play action bonus
+  | 'bunch'           // 3 WR stacked tight — short/screen bonus
+  | 'dice'            // 2x2 even split — medium pass bonus
+  | 'firm'            // TE tight both sides — run/PA bonus
+  | 'fax'             // TE flex one side — balanced
+  | 'weak';           // Weak-side heavy — counter bonus
+
+/** Complete offensive play call (mirrors DefensiveCall). */
+export interface OffensiveCall {
+  personnel: PersonnelGrouping;
+  formation: Formation;
+  formationVariant: FormationVariant | null;
+  protectionScheme: ProtectionScheme | null;
+  motionType: MotionType | null;
+  routeConcept: RouteConcept | null;
+  runScheme: RunScheme | null;
+  playCall: PlayCall;
+}
 
 /** Defensive front alignment (Rex Ryan 3-4 scheme). */
 export type DefensiveFront = 'odd' | 'over' | 'under' | 'reduce' | 'sink_46';
@@ -325,8 +372,20 @@ export interface PlayResult {
   personnelGrouping?: PersonnelGrouping;
   /** Named route concept used on pass plays. */
   routeConcept?: RouteConcept;
+  /** Complete offensive call for this play. */
+  offensiveCall?: OffensiveCall;
+  /** Protection scheme used on pass plays. */
+  protectionScheme?: ProtectionScheme;
+  /** Pre-snap motion type. */
+  motionType?: MotionType;
+  /** Run scheme used on run plays. */
+  runScheme?: RunScheme;
+  /** Named formation variant (Arians playbook). */
+  formationVariant?: FormationVariant;
   /** Whether a kick (FG or XP) was blocked by the defense. */
   blocked?: boolean;
+  /** Whether a completed pass was dropped by the receiver. */
+  dropped?: boolean;
   /** Kickoff metadata for visualization (distance, hang time, catch spot). */
   kickoffMeta?: {
     distance: number;

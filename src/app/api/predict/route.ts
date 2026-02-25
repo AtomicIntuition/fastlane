@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { predictions, games, teams } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
+import { getUserIdFromRequest } from '@/lib/utils/signed-cookie';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,11 +19,8 @@ export const dynamic = 'force-dynamic';
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get user ID from headers or cookies
-    // In production this would come from an auth provider (Clerk, NextAuth, etc.)
-    const userId =
-      request.headers.get('x-user-id') ??
-      request.cookies.get('userId')?.value;
+    // Get user ID from signed cookie (with legacy fallback)
+    const userId = getUserIdFromRequest(request);
 
     if (!userId) {
       return NextResponse.json(

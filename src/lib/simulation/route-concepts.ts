@@ -79,16 +79,18 @@ const CONCEPT_TABLES: Record<string, DepthConceptTables> = {
   },
   pass_deep: {
     mofo: [
-      { value: 'pylon', weight: 30 },
-      { value: 'delta', weight: 30 },
-      { value: 'cab', weight: 25 },
+      { value: 'pylon', weight: 25 },
+      { value: 'delta', weight: 25 },
+      { value: 'cab', weight: 20 },
+      { value: 'caddy', weight: 15 },
       { value: 'x_ray', weight: 15 },
     ],
     mofc: [
-      { value: 'go', weight: 40 },
+      { value: 'go', weight: 35 },
       { value: 'x_ray', weight: 25 },
-      { value: 'delta', weight: 20 },
+      { value: 'delta', weight: 15 },
       { value: 'pylon', weight: 15 },
+      { value: 'caddy', weight: 10 },
     ],
   },
   screen_pass: {
@@ -109,16 +111,18 @@ const CONCEPT_TABLES: Record<string, DepthConceptTables> = {
   },
   play_action_deep: {
     mofo: [
-      { value: 'cab', weight: 30 },
-      { value: 'pylon', weight: 30 },
-      { value: 'go', weight: 25 },
+      { value: 'cab', weight: 25 },
+      { value: 'pylon', weight: 25 },
+      { value: 'go', weight: 20 },
+      { value: 'caddy', weight: 15 },
       { value: 'x_ray', weight: 15 },
     ],
     mofc: [
-      { value: 'go', weight: 35 },
-      { value: 'x_ray', weight: 30 },
+      { value: 'go', weight: 30 },
+      { value: 'x_ray', weight: 25 },
       { value: 'delta', weight: 20 },
       { value: 'pylon', weight: 15 },
+      { value: 'caddy', weight: 10 },
     ],
   },
 };
@@ -211,6 +215,13 @@ const CONCEPT_COVERAGE_MODIFIERS: Partial<Record<RouteConcept, Partial<Record<Co
     cover_2: { completionBonus: 0.05, yardsBonus: 2 },
     cover_6: { completionBonus: 0.03, yardsBonus: 1 },
     cover_1: { completionBonus: -0.03, yardsBonus: -1 },
+  },
+  caddy: {
+    // 18-yard comeback; converts to drive vs cover 2 rotation
+    cover_2: { completionBonus: 0.05, yardsBonus: 2 },
+    cover_3: { completionBonus: 0.03, yardsBonus: 1 },
+    man_press: { completionBonus: -0.02, yardsBonus: -1 },
+    cover_4: { completionBonus: -0.03, yardsBonus: -1 },
   },
 
   // Special
