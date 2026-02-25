@@ -7,7 +7,7 @@ import type { NarrativeSnapshot, GameState } from '@/lib/simulation/types';
 import { useGameStream, type BreakType } from '@/hooks/use-game-stream';
 import { useMomentum } from '@/hooks/use-momentum';
 import { useDynamicTab } from '@/hooks/use-dynamic-tab';
-import { useProceduralAudio } from '@/hooks/use-procedural-audio';
+import { useCrowdAudio } from '@/hooks/use-crowd-audio';
 import { useBroadcasterAudio } from '@/hooks/use-broadcaster-audio';
 import { buildLiveBoxScore } from '@/lib/utils/live-box-score';
 import { getTeamLogoUrl, canFlipLogo } from '@/lib/utils/team-logos';
@@ -51,8 +51,9 @@ export function GameViewer({ gameId }: GameViewerProps) {
 
   const { momentum } = useMomentum(events);
 
-  // Procedural crowd audio
-  const { isMuted, toggle: toggleAudio, triggerReaction } = useProceduralAudio();
+  // Crowd audio (WAV files)
+  const { isEnabled, toggle: toggleAudio, triggerReaction } = useCrowdAudio();
+  const isMuted = !isEnabled;
 
   // Broadcaster narration (Web Speech API)
   const {
