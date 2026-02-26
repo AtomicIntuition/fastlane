@@ -1,0 +1,75 @@
+name: FastLane CI
+
+on:
+  pull_request:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Launch checklist gate
+        run: npm run check:launch-checklist
+
+      - name: Vercel cron gate
+        run: npm run check:vercel-cron
+
+      - name: FastLane unit tests
+        run: npm run test:fastlane
+
+  e2e-fastlane:
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: FastLane e2e (Chromium + Mobile Chrome)
+        env:
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          CRON_SECRET: test-secret
+          USER_COOKIE_SECRET: test-cookie-secret
+        run: npm run test:e2e:fastlane:all
+
+      - name: FastLane accessibility audit (Chromium + Mobile Chrome)
+        env:
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          CRON_SECRET: test-secret
+          USER_COOKIE_SECRET: test-cookie-secret
+        run: npm run test:e2e:fastlane:a11y
+
+      - name: Lighthouse audit (landing + app demo)
+        env:
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          CRON_SECRET: test-secret
+          USER_COOKIE_SECRET: test-cookie-secret
+          LIGHTHOUSE_STRICT: "1"
+        run: npm run test:lighthouse:strict

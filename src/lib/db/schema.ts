@@ -1,5 +1,5 @@
 // ============================================================
-// GridBlitz - Drizzle ORM Schema for Neon Postgres
+// FastLane - Drizzle ORM Schema for Neon Postgres
 // ============================================================
 
 import {
@@ -13,351 +13,188 @@ import {
   pgEnum,
   uniqueIndex,
   index,
-  bigserial,
   text,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
 
 // ============================================================
 // ENUMS
 // ============================================================
 
-export const conferenceEnum = pgEnum('conference', ['AFC', 'NFC']);
-
-export const divisionEnum = pgEnum('division', ['North', 'South', 'East', 'West']);
-
-export const playStyleEnum = pgEnum('play_style', [
-  'balanced',
-  'pass_heavy',
-  'run_heavy',
-  'aggressive',
-  'conservative',
+export const fastlaneGoalEnum = pgEnum('fastlane_goal', [
+  'weight',
+  'energy',
+  'metabolic',
+  'routine',
 ]);
 
-export const positionEnum = pgEnum('position', [
-  'QB', 'RB', 'WR', 'TE', 'OL', 'DL', 'LB', 'CB', 'S', 'K', 'P',
+export const fastlaneExperienceEnum = pgEnum('fastlane_experience', [
+  'new',
+  'intermediate',
+  'advanced',
 ]);
 
-export const gameTypeEnum = pgEnum('game_type', [
-  'regular',
-  'wild_card',
-  'divisional',
-  'conference_championship',
-  'super_bowl',
-]);
+export const fastlaneTierEnum = pgEnum('fastlane_tier', ['free', 'pro']);
 
-export const gameStatusEnum = pgEnum('game_status', [
-  'scheduled',
-  'simulating',
-  'broadcasting',
-  'completed',
-]);
-
-export const seasonStatusEnum = pgEnum('season_status', [
-  'regular_season',
-  'wild_card',
-  'divisional',
-  'conference_championship',
-  'super_bowl',
-  'offseason',
-]);
-
-export const predictionResultEnum = pgEnum('prediction_result', [
-  'pending',
-  'won',
-  'lost',
+export const fastlaneSubscriptionStatusEnum = pgEnum('fastlane_subscription_status', [
+  'incomplete',
+  'incomplete_expired',
+  'trialing',
+  'active',
+  'past_due',
+  'canceled',
+  'unpaid',
+  'paused',
 ]);
 
 // ============================================================
 // TABLES
 // ============================================================
 
-// ---- Teams ----
-
-export const teams = pgTable('teams', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  name: varchar('name', { length: 100 }).notNull(),
-  abbreviation: varchar('abbreviation', { length: 5 }).notNull(),
-  city: varchar('city', { length: 50 }).notNull(),
-  mascot: varchar('mascot', { length: 50 }).notNull(),
-  conference: conferenceEnum('conference').notNull(),
-  division: divisionEnum('division').notNull(),
-  primaryColor: varchar('primary_color', { length: 7 }).notNull(),
-  secondaryColor: varchar('secondary_color', { length: 7 }).notNull(),
-  offenseRating: integer('offense_rating').notNull(),
-  defenseRating: integer('defense_rating').notNull(),
-  specialTeamsRating: integer('special_teams_rating').notNull(),
-  playStyle: playStyleEnum('play_style').notNull().default('balanced'),
-  createdAt: timestamp('created_at').defaultNow(),
-});
-
-// ---- Players ----
-
-export const players = pgTable('players', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  teamId: uuid('team_id')
-    .notNull()
-    .references(() => teams.id),
-  name: varchar('name', { length: 100 }).notNull(),
-  position: positionEnum('position').notNull(),
-  number: integer('number').notNull(),
-  rating: integer('rating').notNull(),
-  speed: integer('speed').notNull(),
-  strength: integer('strength').notNull(),
-  awareness: integer('awareness').notNull(),
-  clutchRating: integer('clutch_rating').notNull(),
-  injuryProne: boolean('injury_prone').default(false),
-  espnId: varchar('espn_id', { length: 20 }),
-  createdAt: timestamp('created_at').defaultNow(),
-});
-
-// ---- Seasons ----
-
-export const seasons = pgTable('seasons', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  seasonNumber: integer('season_number').notNull(),
-  currentWeek: integer('current_week').notNull().default(1),
-  totalWeeks: integer('total_weeks').notNull().default(22),
-  status: seasonStatusEnum('status').notNull().default('regular_season'),
-  championTeamId: uuid('champion_team_id').references(() => teams.id),
-  mvpPlayerId: uuid('mvp_player_id').references(() => players.id),
-  seed: varchar('seed', { length: 64 }).notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-  completedAt: timestamp('completed_at'),
-});
-
-// ---- Games ----
-
-export const games = pgTable(
-  'games',
+export const fastlaneUsers = pgTable(
+  'fastlane_users',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    seasonId: uuid('season_id')
-      .notNull()
-      .references(() => seasons.id),
-    week: integer('week').notNull(),
-    gameType: gameTypeEnum('game_type').notNull().default('regular'),
-    homeTeamId: uuid('home_team_id')
-      .notNull()
-      .references(() => teams.id),
-    awayTeamId: uuid('away_team_id')
-      .notNull()
-      .references(() => teams.id),
-    homeScore: integer('home_score').default(0),
-    awayScore: integer('away_score').default(0),
-    status: gameStatusEnum('status').notNull().default('scheduled'),
-    isFeatured: boolean('is_featured').default(false),
-    serverSeedHash: varchar('server_seed_hash', { length: 64 }),
-    serverSeed: varchar('server_seed', { length: 64 }),
-    clientSeed: varchar('client_seed', { length: 64 }),
-    nonce: integer('nonce'),
-    totalPlays: integer('total_plays'),
-    gameDurationMs: integer('game_duration_ms'),
-    mvpPlayerId: uuid('mvp_player_id').references(() => players.id),
-    boxScore: jsonb('box_score'),
-    weather: jsonb('weather'),
-    scheduledAt: timestamp('scheduled_at'),
-    broadcastStartedAt: timestamp('broadcast_started_at'),
-    completedAt: timestamp('completed_at'),
+    userId: varchar('user_id', { length: 100 }).notNull().unique(),
+    email: varchar('email', { length: 255 }),
+    goal: fastlaneGoalEnum('goal').notNull().default('energy'),
+    experience: fastlaneExperienceEnum('experience').notNull().default('new'),
+    protocolId: varchar('protocol_id', { length: 50 }).notNull().default('16_8'),
+    wakeTime: varchar('wake_time', { length: 5 }).notNull().default('07:00'),
+    sleepTime: varchar('sleep_time', { length: 5 }).notNull().default('23:00'),
+    reminders: boolean('reminders').notNull().default(true),
+    tier: fastlaneTierEnum('tier').notNull().default('free'),
+    onboarded: boolean('onboarded').notNull().default(false),
+    activeFastStartAt: timestamp('active_fast_start_at'),
     createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
   },
   (table) => ({
-    seasonWeekIdx: index('games_season_week_idx').on(table.seasonId, table.week),
-    statusIdx: index('games_status_idx').on(table.status),
-    featuredStatusIdx: index('games_featured_status_idx').on(table.isFeatured, table.status),
+    userIdIdx: uniqueIndex('fastlane_users_user_id_idx').on(table.userId),
   }),
 );
 
-// ---- Game Events ----
-
-export const gameEvents = pgTable(
-  'game_events',
-  {
-    id: bigserial('id', { mode: 'number' }).primaryKey(),
-    gameId: uuid('game_id')
-      .notNull()
-      .references(() => games.id),
-    eventNumber: integer('event_number').notNull(),
-    eventType: varchar('event_type', { length: 50 }).notNull(),
-    playResult: jsonb('play_result').notNull(),
-    commentary: jsonb('commentary').notNull(),
-    gameState: jsonb('game_state').notNull(),
-    narrativeContext: jsonb('narrative_context'),
-    displayTimestamp: integer('display_timestamp').notNull(),
-    createdAt: timestamp('created_at').defaultNow(),
-  },
-  (table) => ({
-    gameEventNumberIdx: uniqueIndex('game_events_game_event_number_idx').on(
-      table.gameId,
-      table.eventNumber,
-    ),
-  }),
-);
-
-// ---- Standings ----
-
-export const standings = pgTable(
-  'standings',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    seasonId: uuid('season_id')
-      .notNull()
-      .references(() => seasons.id),
-    teamId: uuid('team_id')
-      .notNull()
-      .references(() => teams.id),
-    wins: integer('wins').default(0),
-    losses: integer('losses').default(0),
-    ties: integer('ties').default(0),
-    divisionWins: integer('division_wins').default(0),
-    divisionLosses: integer('division_losses').default(0),
-    conferenceWins: integer('conference_wins').default(0),
-    conferenceLosses: integer('conference_losses').default(0),
-    pointsFor: integer('points_for').default(0),
-    pointsAgainst: integer('points_against').default(0),
-    streak: varchar('streak', { length: 10 }).default('W0'),
-    playoffSeed: integer('playoff_seed'),
-    clinched: varchar('clinched', { length: 20 }),
-  },
-  (table) => ({
-    seasonTeamIdx: uniqueIndex('standings_season_team_idx').on(
-      table.seasonId,
-      table.teamId,
-    ),
-  }),
-);
-
-// ---- Predictions ----
-
-export const predictions = pgTable(
-  'predictions',
+export const fastlaneSessions = pgTable(
+  'fastlane_sessions',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     userId: varchar('user_id', { length: 100 }).notNull(),
-    gameId: uuid('game_id')
-      .notNull()
-      .references(() => games.id),
-    predictedWinner: uuid('predicted_winner')
-      .notNull()
-      .references(() => teams.id),
-    predictedHomeScore: integer('predicted_home_score').notNull(),
-    predictedAwayScore: integer('predicted_away_score').notNull(),
-    pointsEarned: integer('points_earned').default(0),
-    result: predictionResultEnum('result').default('pending'),
+    protocolId: varchar('protocol_id', { length: 50 }).notNull(),
+    startAt: timestamp('start_at').notNull(),
+    endAt: timestamp('end_at').notNull(),
+    durationMinutes: integer('duration_minutes').notNull(),
     createdAt: timestamp('created_at').defaultNow(),
   },
   (table) => ({
-    userGameIdx: uniqueIndex('predictions_user_game_idx').on(
-      table.userId,
-      table.gameId,
-    ),
+    userEndIdx: index('fastlane_sessions_user_end_idx').on(table.userId, table.endAt),
   }),
 );
 
-// ---- User Scores ----
+export const fastlaneCheckIns = pgTable(
+  'fastlane_checkins',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: varchar('user_id', { length: 100 }).notNull(),
+    loggedAt: timestamp('logged_at').notNull().defaultNow(),
+    energy: integer('energy').notNull(),
+    hunger: integer('hunger').notNull(),
+    mood: integer('mood').notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => ({
+    userLoggedIdx: index('fastlane_checkins_user_logged_idx').on(table.userId, table.loggedAt),
+  }),
+);
 
-export const userScores = pgTable('user_scores', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  userId: varchar('user_id', { length: 100 }).notNull().unique(),
-  displayName: varchar('display_name', { length: 30 }),
-  totalPoints: integer('total_points').default(0),
-  correctPredictions: integer('correct_predictions').default(0),
-  totalPredictions: integer('total_predictions').default(0),
-  currentStreak: integer('current_streak').default(0),
-  bestStreak: integer('best_streak').default(0),
-  rank: integer('rank'),
-});
+export const fastlaneSubscriptions = pgTable(
+  'fastlane_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: varchar('user_id', { length: 100 }).notNull().unique(),
+    stripeCustomerId: varchar('stripe_customer_id', { length: 100 }),
+    stripeSubscriptionId: varchar('stripe_subscription_id', { length: 100 }),
+    status: fastlaneSubscriptionStatusEnum('status').notNull().default('incomplete'),
+    plan: varchar('plan', { length: 20 }),
+    currentPeriodEnd: timestamp('current_period_end'),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').default(false),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+  },
+  (table) => ({
+    userSubIdx: uniqueIndex('fastlane_subscriptions_user_idx').on(table.userId),
+    stripeCustomerIdx: index('fastlane_subscriptions_customer_idx').on(table.stripeCustomerId),
+    stripeSubscriptionIdx: index('fastlane_subscriptions_subscription_idx').on(table.stripeSubscriptionId),
+  }),
+);
 
-// ---- Jumbotron Messages ----
+export const fastlaneWebhookEvents = pgTable(
+  'fastlane_webhook_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    stripeEventId: varchar('stripe_event_id', { length: 100 }).notNull().unique(),
+    eventType: varchar('event_type', { length: 100 }).notNull(),
+    payload: jsonb('payload').notNull(),
+    processed: boolean('processed').notNull().default(false),
+    processedAt: timestamp('processed_at'),
+    replayCount: integer('replay_count').notNull().default(0),
+    lastReplayAt: timestamp('last_replay_at'),
+    lastReplayedBy: varchar('last_replayed_by', { length: 100 }),
+    error: text('error'),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => ({
+    stripeEventIdx: uniqueIndex('fastlane_webhook_events_stripe_event_idx').on(table.stripeEventId),
+    eventTypeIdx: index('fastlane_webhook_events_event_type_idx').on(table.eventType),
+  }),
+);
 
-export const jumbotronMessages = pgTable('jumbotron_messages', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  message: text('message').notNull(),
-  type: varchar('type', { length: 30 }).notNull().default('info'),
-  durationSeconds: integer('duration_seconds').notNull().default(30),
-  expiresAt: timestamp('expires_at').notNull(),
-  createdAt: timestamp('created_at').defaultNow(),
-});
+export const fastlaneAnalyticsEvents = pgTable(
+  'fastlane_analytics_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: varchar('user_id', { length: 100 }),
+    eventName: varchar('event_name', { length: 64 }).notNull(),
+    source: varchar('source', { length: 20 }).notNull().default('web'),
+    eventAt: timestamp('event_at').notNull().defaultNow(),
+    props: jsonb('props'),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => ({
+    eventAtIdx: index('fastlane_analytics_events_event_at_idx').on(table.eventAt),
+    eventNameEventAtIdx: index('fastlane_analytics_events_event_name_event_at_idx').on(
+      table.eventName,
+      table.eventAt,
+    ),
+    userEventAtIdx: index('fastlane_analytics_events_user_event_at_idx').on(table.userId, table.eventAt),
+  }),
+);
 
-// ============================================================
-// RELATIONS
-// ============================================================
+export const fastlaneLoginTokenReplay = pgTable(
+  'fastlane_login_token_replay',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
+    expiresAt: timestamp('expires_at').notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => ({
+    tokenHashIdx: uniqueIndex('fastlane_login_token_replay_token_hash_idx').on(table.tokenHash),
+    expiresAtIdx: index('fastlane_login_token_replay_expires_at_idx').on(table.expiresAt),
+  }),
+);
 
-export const teamsRelations = relations(teams, ({ many }) => ({
-  players: many(players),
-  homeGames: many(games, { relationName: 'homeTeam' }),
-  awayGames: many(games, { relationName: 'awayTeam' }),
-  standings: many(standings),
-}));
-
-export const playersRelations = relations(players, ({ one }) => ({
-  team: one(teams, {
-    fields: [players.teamId],
-    references: [teams.id],
+export const fastlaneLoginRequestThrottle = pgTable(
+  'fastlane_login_request_throttle',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: varchar('email', { length: 255 }).notNull().unique(),
+    lastRequestedAt: timestamp('last_requested_at').notNull().defaultNow(),
+    requestCount: integer('request_count').notNull().default(1),
+    createdAt: timestamp('created_at').defaultNow(),
+  },
+  (table) => ({
+    emailIdx: uniqueIndex('fastlane_login_request_throttle_email_idx').on(table.email),
+    requestedAtIdx: index('fastlane_login_request_throttle_last_requested_at_idx').on(
+      table.lastRequestedAt,
+    ),
   }),
-}));
-
-export const seasonsRelations = relations(seasons, ({ one, many }) => ({
-  championTeam: one(teams, {
-    fields: [seasons.championTeamId],
-    references: [teams.id],
-  }),
-  mvpPlayer: one(players, {
-    fields: [seasons.mvpPlayerId],
-    references: [players.id],
-  }),
-  games: many(games),
-  standings: many(standings),
-}));
-
-export const gamesRelations = relations(games, ({ one, many }) => ({
-  season: one(seasons, {
-    fields: [games.seasonId],
-    references: [seasons.id],
-  }),
-  homeTeam: one(teams, {
-    fields: [games.homeTeamId],
-    references: [teams.id],
-    relationName: 'homeTeam',
-  }),
-  awayTeam: one(teams, {
-    fields: [games.awayTeamId],
-    references: [teams.id],
-    relationName: 'awayTeam',
-  }),
-  mvpPlayer: one(players, {
-    fields: [games.mvpPlayerId],
-    references: [players.id],
-  }),
-  events: many(gameEvents),
-  predictions: many(predictions),
-}));
-
-export const gameEventsRelations = relations(gameEvents, ({ one }) => ({
-  game: one(games, {
-    fields: [gameEvents.gameId],
-    references: [games.id],
-  }),
-}));
-
-export const standingsRelations = relations(standings, ({ one }) => ({
-  season: one(seasons, {
-    fields: [standings.seasonId],
-    references: [seasons.id],
-  }),
-  team: one(teams, {
-    fields: [standings.teamId],
-    references: [teams.id],
-  }),
-}));
-
-export const predictionsRelations = relations(predictions, ({ one }) => ({
-  game: one(games, {
-    fields: [predictions.gameId],
-    references: [games.id],
-  }),
-  predictedWinnerTeam: one(teams, {
-    fields: [predictions.predictedWinner],
-    references: [teams.id],
-  }),
-}));
+);

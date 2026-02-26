@@ -1,5 +1,5 @@
 // ============================================================
-// GridBlitz - Database Connection (Supabase + Drizzle)
+// FastLane - Database Connection (Supabase + Drizzle)
 // ============================================================
 
 import postgres from 'postgres';

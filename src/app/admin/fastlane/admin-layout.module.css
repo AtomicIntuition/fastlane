@@ -1,0 +1,73 @@
+.layout {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 20% 0%, rgba(7, 89, 133, 0.18), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(2, 132, 199, 0.2), transparent 38%),
+    #05090f;
+}
+
+.navShell {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  backdrop-filter: blur(10px);
+  background: rgba(5, 10, 18, 0.82);
+  border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+}
+
+.navWrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.85rem 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.brand {
+  margin: 0;
+  font-size: 0.92rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: rgba(224, 242, 254, 0.96);
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.42rem 0.78rem;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: rgba(186, 230, 253, 0.95);
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.15s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.link:hover {
+  transform: translateY(-1px);
+  background: rgba(14, 116, 144, 0.28);
+  color: #ecfeff;
+}
+
+.linkActive {
+  background: rgba(14, 116, 144, 0.45);
+  border-color: rgba(125, 211, 252, 0.88);
+  color: #f0f9ff;
+  box-shadow: 0 0 0 1px rgba(125, 211, 252, 0.25) inset;
+}
+
+.content {
+  padding-bottom: 3rem;
+}

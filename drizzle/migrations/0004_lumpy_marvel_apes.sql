@@ -1,1 +1,0 @@
-ALTER TABLE "games" ADD COLUMN "game_duration_ms" integer;

@@ -1,8 +1,8 @@
 {
   "crons": [
     {
-      "path": "/api/simulate",
-      "schedule": "0 0 * * *"
+      "path": "/api/fastlane/maintenance/run",
+      "schedule": "15 3 * * *"
     }
   ]
 }

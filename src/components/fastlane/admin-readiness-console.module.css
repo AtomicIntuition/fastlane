@@ -1,0 +1,118 @@
+.shell {
+  min-height: 100vh;
+  color: #e2e8f0;
+  background: linear-gradient(155deg, #0f172a, #111c34 55%, #0b1222 100%);
+}
+
+.wrap {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.heading {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.sub {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.card {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.56);
+  padding: 0.9rem;
+}
+
+.label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  padding: 0.58rem 0.65rem;
+  background: rgba(15, 23, 42, 0.55);
+  color: #f8fafc;
+}
+
+.buttons {
+  margin-top: 0.6rem;
+  display: flex;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  border-radius: 10px;
+  border: 1px solid transparent;
+  padding: 0.55rem 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary {
+  background: linear-gradient(90deg, #4ade80, #f59e0b);
+  color: #0b2a14;
+}
+
+.ghost {
+  background: rgba(15, 23, 42, 0.65);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.36);
+}
+
+.error {
+  color: #fda4af;
+}
+
+.ok {
+  color: #86efac;
+}
+
+.warn {
+  color: #fcd34d;
+}
+
+.grid {
+  display: grid;
+  gap: 0.6rem;
+}
+
+@media (min-width: 860px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.kpiLabel {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.kpiValue {
+  font-size: 1.35rem;
+  font-weight: 800;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.4rem;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  padding: 0.45rem 0.35rem;
+  text-align: left;
+  font-size: 0.88rem;
+}

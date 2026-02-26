@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "@/styles/globals.css";
-import { SimulationDriver } from "@/components/layout/simulation-driver";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,34 +14,32 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "GridBlitz — NFL Football Simulation",
-    template: "%s | GridBlitz",
+    default: "FastLane - Intermittent Fasting",
+    template: "%s | FastLane",
   },
   description:
-    "The always-on NFL simulation. Watch live games, track your team through a full season, and experience every touchdown, turnover, and two-minute drill. More exciting than the real thing.",
+    "FastLane helps you build consistent fasting habits with clear timers, check-ins, and premium protocol support.",
   keywords: [
-    "NFL",
-    "football",
-    "simulation",
-    "live",
-    "streaming",
-    "sports",
-    "predictions",
-    "GridBlitz",
+    "fasting",
+    "intermittent fasting",
+    "health",
+    "wellness",
+    "habit tracking",
+    "FastLane",
   ],
-  authors: [{ name: "GridBlitz" }],
+  authors: [{ name: "FastLane" }],
   openGraph: {
     type: "website",
     locale: "en_US",
-    siteName: "GridBlitz",
-    title: "GridBlitz — NFL Football Simulation",
+    siteName: "FastLane",
+    title: "FastLane - Intermittent Fasting",
     description:
-      "The always-on NFL simulation. Every second is action. Every game matters.",
+      "Build a sustainable intermittent fasting routine with FastLane.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "GridBlitz",
-    description: "The always-on NFL simulation that never stops.",
+    title: "FastLane",
+    description: "Intermittent fasting, simplified.",
   },
   robots: {
     index: true,
@@ -51,7 +48,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0e1a",
+  themeColor: "#10151f",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -68,7 +65,6 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased bg-midnight text-text-primary min-h-dvh`}
       >
-        <SimulationDriver />
         {children}
       </body>
     </html>

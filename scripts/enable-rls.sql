@@ -1,45 +1,29 @@
--- Enable Row Level Security on all public tables
--- All data is publicly readable (simulation platform with no sensitive data).
--- All writes are performed server-side via the service_role key which bypasses RLS.
---
--- Run this in the Supabase SQL Editor (Dashboard > SQL Editor > New Query).
+-- Enable Row Level Security for FastLane tables.
+-- Read policies are permissive for app reads; writes are expected through server-side service role.
 
--- ── Teams ──
-ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "teams_public_read" ON teams;
-CREATE POLICY "teams_public_read" ON teams FOR SELECT USING (true);
+-- Run in Supabase SQL Editor.
 
--- ── Players ──
-ALTER TABLE players ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "players_public_read" ON players;
-CREATE POLICY "players_public_read" ON players FOR SELECT USING (true);
+-- fastlane_users
+ALTER TABLE fastlane_users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "fastlane_users_public_read" ON fastlane_users;
+CREATE POLICY "fastlane_users_public_read" ON fastlane_users FOR SELECT USING (true);
 
--- ── Seasons ──
-ALTER TABLE seasons ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "seasons_public_read" ON seasons;
-CREATE POLICY "seasons_public_read" ON seasons FOR SELECT USING (true);
+-- fastlane_sessions
+ALTER TABLE fastlane_sessions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "fastlane_sessions_public_read" ON fastlane_sessions;
+CREATE POLICY "fastlane_sessions_public_read" ON fastlane_sessions FOR SELECT USING (true);
 
--- ── Games ──
-ALTER TABLE games ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "games_public_read" ON games;
-CREATE POLICY "games_public_read" ON games FOR SELECT USING (true);
+-- fastlane_checkins
+ALTER TABLE fastlane_checkins ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "fastlane_checkins_public_read" ON fastlane_checkins;
+CREATE POLICY "fastlane_checkins_public_read" ON fastlane_checkins FOR SELECT USING (true);
 
--- ── Game Events ──
-ALTER TABLE game_events ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "game_events_public_read" ON game_events;
-CREATE POLICY "game_events_public_read" ON game_events FOR SELECT USING (true);
+-- fastlane_subscriptions
+ALTER TABLE fastlane_subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "fastlane_subscriptions_public_read" ON fastlane_subscriptions;
+CREATE POLICY "fastlane_subscriptions_public_read" ON fastlane_subscriptions FOR SELECT USING (true);
 
--- ── Standings ──
-ALTER TABLE standings ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "standings_public_read" ON standings;
-CREATE POLICY "standings_public_read" ON standings FOR SELECT USING (true);
-
--- ── Predictions ──
-ALTER TABLE predictions ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "predictions_public_read" ON predictions;
-CREATE POLICY "predictions_public_read" ON predictions FOR SELECT USING (true);
-
--- ── User Scores ──
-ALTER TABLE user_scores ENABLE ROW LEVEL SECURITY;
-DROP POLICY IF EXISTS "user_scores_public_read" ON user_scores;
-CREATE POLICY "user_scores_public_read" ON user_scores FOR SELECT USING (true);
+-- fastlane_webhook_events
+ALTER TABLE fastlane_webhook_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "fastlane_webhook_events_public_read" ON fastlane_webhook_events;
+CREATE POLICY "fastlane_webhook_events_public_read" ON fastlane_webhook_events FOR SELECT USING (true);

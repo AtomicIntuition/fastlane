@@ -5,36 +5,43 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1771519901170,
-      "tag": "0000_dear_spacker_dave",
+      "when": 1771995600000,
+      "tag": "0005_fastlane_mvp",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1771544845127,
-      "tag": "0001_last_human_cannonball",
+      "when": 1771999200000,
+      "tag": "0006_fastlane_webhook_idempotency",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1771617366916,
-      "tag": "0002_yielding_mockingbird",
+      "when": 1772002800000,
+      "tag": "0007_fastlane_webhook_replay_audit",
       "breakpoints": true
     },
     {
       "idx": 3,
       "version": "7",
-      "when": 1771738050468,
-      "tag": "0003_curvy_mantis",
+      "when": 1772052600000,
+      "tag": "0008_fastlane_analytics_events",
       "breakpoints": true
     },
     {
       "idx": 4,
       "version": "7",
-      "when": 1771742453723,
-      "tag": "0004_lumpy_marvel_apes",
+      "when": 1772068958000,
+      "tag": "0009_fastlane_login_token_replay",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1772070417000,
+      "tag": "0010_fastlane_login_request_throttle",
       "breakpoints": true
     }
   ]

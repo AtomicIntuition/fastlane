@@ -1,0 +1,1208 @@
+# Memory
+
+## Current Product
+- Repository scope is FastLane only (intermittent fasting app).
+- Legacy codepaths were intentionally removed.
+
+## Guardrails
+- Keep all new features and routes under FastLane domain naming.
+- Preserve mobile-first UX and conversion-focused onboarding/paywall flow.
+- Maintain API hardening patterns (input validation, size limits, signature checks, idempotency).
+
+## Testing Baseline
+- Unit: `npm run test:fastlane`
+- E2E desktop: `npm run test:e2e:fastlane`
+- E2E mobile: `npm run test:e2e:fastlane:mobile`
+
+## Recent Passes
+- Added admin overview upstream timeout handling (configurable via `FASTLANE_ADMIN_OVERVIEW_TIMEOUT_MS`) with `504` behavior and tests.
+- Hardened guest auth signed cookies:
+  - New signed format is time-bound (`userId.issuedAt.hmac`) and verified against max age.
+  - Legacy two-part signed cookies remain accepted for migration compatibility.
+  - Added `USER_COOKIE_MAX_AGE_SECONDS` support with safe bounds.
+  - Added `getUserIdFromSignedCookieValue` helper and route/test updates.
+- Added optimistic concurrency on profile state updates for multi-device safety:
+  - `/api/fastlane/state` GET now returns `stateVersion` and `x-fastlane-state-version`.
+  - `/api/fastlane/state` PUT now accepts `x-fastlane-state-version` and returns `409` with latest state on stale writes.
+  - App client now tracks and sends version headers for onboarding/profile updates and gracefully recovers on conflict.
+- Added secure session hardening with CSRF protection primitives:
+  - New CSRF utility: token generation/verification and production enforcement gate.
+  - Guest auth now provisions and rotates `fastlaneCsrf` token cookie as needed.
+  - Mutation routes (`state` PUT, `session/start`, `session/end`, `checkin`) now validate CSRF in production.
+  - App client now automatically sends `x-fastlane-csrf-token` for mutation requests.
+- Added account-link foundation API for identity migration path:
+  - New route: `/api/fastlane/auth/link` (`GET` status + `POST` link email to current secure session).
+  - Email normalization/validation and conflict protection (409 if email belongs to another user).
+  - CSRF enforcement on link mutation path.
+- Added signed account-session cookie layer:
+  - New utility for `fastlaneAccount` signed cookie create/verify/read.
+  - `requireFastLaneUserId` now prefers account session identity and falls back to guest signed cookie.
+  - Account link success now sets account session cookie; guest reset clears it.
+  - Added coverage for cookie utility and identity precedence behavior.
+- Added token-based auth session flow foundation:
+  - Login token utility (signed short-lived request/verify tokens).
+  - New APIs:
+    - `/api/fastlane/auth/session/request` (email login request; non-prod returns dev token)
+    - `/api/fastlane/auth/session/verify` (verify token and set account session)
+    - `/api/fastlane/auth/session` (read/clear account session)
+  - Added dedicated unit coverage for token + each new route.
+- Wired account session UX into app dashboard:
+  - Added Account panel to link email, request sign-in token, verify token, and sign out account session.
+  - App now loads account session + link status at startup and reflects live auth state in UI.
+- Added e2e coverage for account auth UX:
+  - New desktop/mobile app-flow test covers link email -> request token -> verify -> sign out account session.
+- Added auth email delivery abstraction for production sign-in tokens:
+  - New `auth-email` helper with Resend API integration and config checks.
+  - `/api/fastlane/auth/session/request` now:
+    - sends token emails when delivery is configured,
+    - falls back to `devLoginToken` only in non-production,
+    - returns 500 in production when auth email delivery is not configured.
+  - Service readiness now tracks `authEmailConfigured` and gates `readyForProduction` on it.
+- Added full magic-link UX auto-consumption:
+  - App auto-detects `login_token` query param on load, verifies it, activates account session, and removes token from URL.
+  - Added desktop/mobile e2e coverage for this flow.
+- Added auth abuse safeguards:
+  - Stricter proxy rate limits for auth endpoints:
+    - `/api/fastlane/auth/session/request` (8/min per IP)
+    - `/api/fastlane/auth/session/verify` (20/min per IP)
+  - One-time token replay protection for login verification route (rejects reused tokens with 409).
+  - Added unit coverage for replay cache + replay rejection behavior.
+- Added lifecycle notification planning (Phase 6):
+  - New deterministic notification planner (`buildFastLaneNotificationPlan`) with:
+    - active-fast reminders (near-complete, completion, hydration),
+    - idle reminders (wake/sleep windows + re-engagement when stale),
+    - channel selection (`email` when account-linked, otherwise `in_app`).
+  - New secured API route: `/api/fastlane/notifications/plan`.
+  - Dashboard now renders a Notification Plan card and allows reminder pause/resume directly.
+  - Added coverage:
+    - `tests/unit/fastlane/notifications.test.ts`
+    - `tests/unit/fastlane/api-notifications-plan-route.test.ts`
+    - e2e app flow assertion for notification plan and reminder toggle.
+- Hardened auth token replay protection for production multi-instance reliability:
+  - Added persistent replay store table: `fastlane_login_token_replay` with indexed `token_hash` and `expires_at`.
+  - Added migration: `0009_fastlane_login_token_replay.sql`.
+  - Replaced in-memory-only replay cache with DB-backed replay checks/inserts in `login-token-replay` utility.
+  - Updated `/api/fastlane/auth/session/verify` to atomically consume login tokens using DB insert-on-conflict semantics.
+  - Updated replay + verify unit tests for DB-backed behavior.
+- Added replay-store operations hygiene and observability:
+  - Admin readiness now reports replay marker counts:
+    - `activeLoginReplayMarkers`
+    - `expiredLoginReplayMarkers`
+  - New authenticated maintenance endpoint:
+    - `POST /api/admin/fastlane/maintenance/auth-replay`
+    - Supports `dryRun` + bounded `limit` for expired replay marker cleanup.
+  - Admin readiness console now includes:
+    - replay marker KPI card,
+    - dry-run cleanup action,
+    - purge action for expired markers.
+  - Added unit coverage for maintenance route and updated readiness route assertions.
+- Added admin mutation CSRF hardening:
+  - New utility: `src/lib/utils/admin-csrf.ts`
+    - cookie/header token model for admin session flows,
+    - production enforcement with emergency disable flag,
+    - bearer-token bypass for trusted automation paths.
+  - Admin auth route now sets and clears `fastlaneAdminCsrf` cookie; authenticated GET rotates token.
+  - Enforced admin CSRF checks on mutation endpoints:
+    - `POST /api/admin/fastlane/webhook/reprocess`
+    - `POST /api/admin/fastlane/maintenance/auth-replay`
+  - Admin consoles now send `x-fastlane-admin-csrf-token` from cookie on mutation calls.
+  - Added/updated tests:
+    - `tests/unit/fastlane/admin-csrf.test.ts`
+    - `tests/unit/fastlane/admin-auth-route.test.ts`
+    - `tests/unit/fastlane/api-admin-webhook-reprocess-route.test.ts`
+    - `tests/unit/fastlane/api-admin-maintenance-auth-replay-route.test.ts`
+- Expanded admin readiness billing/ops observability:
+  - Added operational billing risk metrics to readiness API and UI:
+    - `billingAtRiskSubscriptions` (`past_due` + `unpaid`)
+    - `scheduledCancellations` (`cancelAtPeriodEnd=true`)
+    - `oldestFailedWebhookAgeMinutes`
+  - Kept existing auth/replay/webhook KPIs and no-store behavior.
+  - Updated readiness unit coverage for new metrics.
+- Added automated replay-marker cleanup path for cron operations:
+  - New shared replay cleanup service:
+    - `src/lib/fastlane/login-token-replay-maintenance.ts`
+    - centralizes parsing + bounded cleanup execution for expired replay markers.
+  - Admin maintenance route now uses shared cleanup service.
+  - New cron-authenticated endpoint:
+    - `POST /api/fastlane/maintenance/auth-replay`
+    - requires `Authorization: Bearer <CRON_SECRET>`
+    - supports `dryRun` and bounded `limit`.
+  - Added unit coverage:
+    - `tests/unit/fastlane/api-maintenance-auth-replay-route.test.ts`
+- Added strict maintenance endpoint rate-limit hardening:
+  - Proxy now applies dedicated tighter limits before generic prefixes:
+    - `/api/fastlane/maintenance/auth-replay` -> 6 req/min
+    - `/api/admin/fastlane/maintenance/auth-replay` -> 12 req/min
+  - Preserved existing broader API/admin limits as fallback.
+  - Added unit coverage for proxy matcher precedence:
+    - `tests/unit/fastlane/proxy-rate-limit.test.ts`
+- Added DB-backed login request cooldown for magic-link auth:
+  - New table + migration:
+    - `fastlane_login_request_throttle`
+    - `drizzle/migrations/0010_fastlane_login_request_throttle.sql`
+  - `/api/fastlane/auth/session/request` now:
+    - enforces per-email cooldown (`60s`) across instances,
+    - returns generic throttled response (`ok: true`, `throttled: true`, `retryAfterSeconds`) during cooldown,
+    - records/upserts request audit counters for non-throttled attempts.
+  - Updated session-request unit coverage for cooldown behavior.
+- Added stale login-throttle maintenance automation:
+  - New shared maintenance service:
+    - `src/lib/fastlane/login-request-throttle-maintenance.ts`
+    - supports bounded `limit` and `retentionDays` parsing + cleanup execution.
+  - Added admin maintenance endpoint (auth + admin CSRF protected):
+    - `POST /api/admin/fastlane/maintenance/auth-request-throttle`
+  - Added cron maintenance endpoint (Bearer `CRON_SECRET` protected):
+    - `POST /api/fastlane/maintenance/auth-request-throttle`
+  - Added stricter dedicated proxy limits for these endpoints:
+    - `/api/fastlane/maintenance/auth-request-throttle` -> 4 req/min
+    - `/api/admin/fastlane/maintenance/auth-request-throttle` -> 8 req/min
+  - Updated proxy matcher precedence tests and added route tests:
+    - `tests/unit/fastlane/proxy-rate-limit.test.ts`
+    - `tests/unit/fastlane/api-admin-maintenance-auth-request-throttle-route.test.ts`
+    - `tests/unit/fastlane/api-maintenance-auth-request-throttle-route.test.ts`
+- Expanded readiness observability for auth-request throttle hygiene:
+  - Admin readiness now reports:
+    - `authThrottleActiveRows` (last requested within 30 days)
+    - `authThrottleStaleRows` (last requested older than 30 days)
+  - Added dashboard KPI card to surface these counts.
+  - Updated readiness unit coverage for these new fields.
+- Admin readiness console now supports auth-request-throttle maintenance actions:
+  - Added retention-days input (`1-365`, default `30`).
+  - Added dry-run and purge buttons that call:
+    - `POST /api/admin/fastlane/maintenance/auth-request-throttle`
+  - Reuses admin CSRF header flow and refreshes readiness snapshot after actions.
+- Added E2E coverage for readiness throttle maintenance UI:
+  - New admin flow test validates:
+    - readiness metrics render,
+    - retention-days input is honored,
+    - dry-run + purge actions call maintenance endpoint with expected payload.
+  - Updated: `tests/e2e/fastlane.spec.ts`
+- Added E2E coverage for readiness replay maintenance UI:
+  - New admin flow test validates:
+    - replay marker KPI render,
+    - replay dry-run + purge actions call maintenance endpoint with expected payload,
+    - maintenance result message renders after purge.
+  - Updated: `tests/e2e/fastlane.spec.ts`
+- Added direct unit coverage for login-request-throttle maintenance service:
+  - New tests validate:
+    - cleanup limit parsing bounds,
+    - retention-days parsing bounds,
+    - dry-run behavior (no deletes),
+    - non-dry-run delete behavior and returned counts.
+  - Added: `tests/unit/fastlane/login-request-throttle-maintenance.test.ts`
+- Added unified cron orchestration for auth maintenance jobs:
+  - New cron route:
+    - `POST /api/fastlane/maintenance/run`
+    - requires `Authorization: Bearer <CRON_SECRET>`
+    - validates bounded optional inputs:
+      - `dryRun`
+      - `replayLimit` (`1..10000`)
+      - `throttleLimit` (`1..10000`)
+      - `throttleRetentionDays` (`1..365`)
+    - runs both cleanup services in a single call:
+      - `cleanupExpiredLoginReplayMarkers(...)`
+      - `cleanupStaleLoginRequestThrottleRows(...)`
+    - returns combined summary payload for replay + throttle jobs.
+  - Added dedicated proxy limiter for unified endpoint:
+    - `/api/fastlane/maintenance/run` -> `2 req/min`
+  - Added unit coverage:
+    - `tests/unit/fastlane/api-maintenance-run-route.test.ts`
+    - `tests/unit/fastlane/proxy-rate-limit.test.ts` (matcher precedence + limiter mapping)
+- Added unified admin maintenance orchestration for readiness operations:
+  - New admin route:
+    - `POST /api/admin/fastlane/maintenance/run`
+    - requires valid admin session and admin CSRF token
+    - validates bounded optional inputs:
+      - `dryRun`
+      - `replayLimit` (`1..10000`)
+      - `throttleLimit` (`1..10000`)
+      - `throttleRetentionDays` (`1..365`)
+    - runs replay + throttle cleanup services in one action and returns combined summary.
+  - Admin readiness console now exposes:
+    - `Run all maintenance dry-run`
+    - `Run all maintenance now`
+    - includes result summary for replay + throttle cleanup counts and retention days.
+  - Added dedicated proxy limiter:
+    - `/api/admin/fastlane/maintenance/run` -> `6 req/min`
+  - Added test coverage:
+    - `tests/unit/fastlane/api-admin-maintenance-run-route.test.ts`
+    - `tests/unit/fastlane/proxy-rate-limit.test.ts`
+    - `tests/e2e/fastlane.spec.ts` (unified maintenance admin flow)
+- Updated plan alignment:
+  - `IMPLEMENTATION_PLAN.md` now marks auth/session and billing webhooks/portal as complete in Phase 6.
+- Hardened Lighthouse execution for offline and CI stability:
+  - Added wrapper runner:
+    - `scripts/run-lighthouse.mjs`
+    - execution order:
+      - uses local `lhci` binary if installed,
+      - falls back to local CLI path if present,
+      - in strict mode (`LIGHTHOUSE_STRICT=1` or `CI=true`) falls back to `npx -y @lhci/cli@0.15.x`,
+      - in non-strict local mode, skips gracefully when `lhci` is unavailable.
+  - Updated npm scripts:
+    - `test:lighthouse` -> local-friendly runner
+    - `test:lighthouse:strict` -> enforced runner
+    - `test:release-gate` now includes `test:lighthouse`
+  - Updated CI workflow:
+    - Lighthouse step now runs `npm run test:lighthouse:strict` with `LIGHTHOUSE_STRICT=1`.
+  - Updated docs:
+    - `README.md` and `TEST_STRATEGY.md` now document local vs strict lighthouse modes.
+  - Updated Phase 6 plan status:
+    - `IMPLEMENTATION_PLAN.md` now marks performance/accessibility audit pass complete.
+- Improved Lighthouse runner compatibility with local/global installs:
+  - `scripts/run-lighthouse.mjs` now also attempts `lhci` from PATH when local package is absent.
+  - Strict-mode fallback now prints actionable guidance when `npx` fetch fails:
+    - install `@lhci/cli` as local dev dependency or provide global `lhci` on PATH.
+  - Verified behavior in restricted environment:
+    - `npm run test:lighthouse` exits cleanly with skip message.
+    - `npm run test:lighthouse:strict` fails with explicit install guidance when registry is unreachable.
+- Fixed production cron configuration and added operations runbook:
+  - Updated `vercel.json` cron target from legacy `/api/simulate` to FastLane:
+    - `/api/fastlane/maintenance/run` on `15 3 * * *` (daily 03:15 UTC)
+  - Added `OPERATIONS_RUNBOOK.md` with:
+    - unified maintenance endpoint contract,
+    - cron auth requirements (`CRON_SECRET`),
+    - curl dry-run and execution examples,
+    - readiness/admin incident triage workflow,
+    - required env vars and verification checklist.
+  - Linked runbook in `README.md`.
+  - Re-verified full quality gates remain green after cron/docs updates.
+- Added explicit CI/release guard for FastLane Vercel cron configuration:
+  - New script:
+    - `scripts/check-vercel-cron.mjs`
+    - validates:
+      - `vercel.json` parses as JSON object,
+      - `crons` array exists and is non-empty,
+      - required path `/api/fastlane/maintenance/run` exists,
+      - schedule is a 5-field cron string,
+      - minute/hour fields are valid wildcard or bounded integers.
+  - Added npm script:
+    - `check:vercel-cron`
+  - Updated release gate:
+    - `test:release-gate` now includes `check:vercel-cron`.
+  - Updated CI workflow:
+    - quality job now runs `npm run check:vercel-cron`.
+  - Updated docs:
+    - `README.md` includes cron config guard command.
+- Added deployment environment preflight checks:
+  - New shared env validation utility:
+    - `src/lib/utils/env-preflight.ts`
+    - supports `strict` mode and validates:
+      - required production env vars,
+      - URL formats,
+      - Stripe/Resend key prefixes,
+      - alert routing presence,
+      - minimum secret lengths for auth/security secrets.
+  - Added unit coverage:
+    - `tests/unit/fastlane/env-preflight.test.ts`
+  - Added Node runtime preflight script (sandbox-safe, no tsx IPC):
+    - `scripts/check-production-env.mjs`
+    - commands:
+      - `npm run check:env` (standard; warns for missing vars)
+      - `npm run check:env:strict` (fails on missing/invalid required vars)
+  - Updated release gate:
+    - `test:release-gate` now includes `check:env`.
+  - Updated docs:
+    - `README.md` and `OPERATIONS_RUNBOOK.md` include env preflight commands.
+  - Validation note:
+    - `check:env:strict` is expected to fail in local shells without full production env values.
+- Added maintenance operator telemetry (success/failure + last run timestamps):
+  - New telemetry module:
+    - `src/lib/fastlane/maintenance-ops-telemetry.ts`
+    - records admin maintenance events into `fastlane_analytics_events`:
+      - `admin_maintenance_replay_success|failure`
+      - `admin_maintenance_throttle_success|failure`
+      - `admin_maintenance_run_success|failure`
+    - provides aggregated snapshot:
+      - `maintenanceActionSuccessCount`
+      - `maintenanceActionFailureCount`
+      - `lastMaintenanceSuccessAt`
+      - `lastMaintenanceFailureAt`
+  - Integrated telemetry recording into admin maintenance routes:
+    - `POST /api/admin/fastlane/maintenance/auth-replay`
+    - `POST /api/admin/fastlane/maintenance/auth-request-throttle`
+    - `POST /api/admin/fastlane/maintenance/run`
+  - Extended admin readiness API aggregation:
+    - `GET /api/admin/fastlane/readiness` now includes telemetry metrics in `operations`.
+  - Extended readiness console UI:
+    - shows maintenance success/failure counters and last success/failure timestamps.
+  - Added/updated unit coverage:
+    - `tests/unit/fastlane/api-admin-maintenance-auth-replay-route.test.ts`
+    - `tests/unit/fastlane/api-admin-maintenance-auth-request-throttle-route.test.ts`
+    - `tests/unit/fastlane/api-admin-maintenance-run-route.test.ts`
+    - `tests/unit/fastlane/api-admin-readiness-route.test.ts`
+- Surfaced maintenance telemetry in admin overview snapshot:
+  - Updated overview API aggregation:
+    - `GET /api/admin/fastlane/overview`
+    - now includes readiness telemetry fields from readiness dependency:
+      - `maintenanceActionSuccessCount`
+      - `maintenanceActionFailureCount`
+      - `lastMaintenanceSuccessAt`
+      - `lastMaintenanceFailureAt`
+  - Updated admin overview UI:
+    - `src/components/fastlane/admin-overview-snapshot.tsx`
+    - added metrics for maintenance action success/failure counts and last maintenance success/failure times.
+  - Updated unit coverage:
+    - `tests/unit/fastlane/api-admin-overview-route.test.ts` now asserts telemetry passthrough.
+- Added E2E assertions for overview telemetry cards:
+  - Updated `tests/e2e/fastlane.spec.ts` in admin overview snapshot flow:
+    - mocked telemetry fields from `/api/admin/fastlane/overview`,
+    - asserted `Maintenance Actions (S/F)` renders expected count value,
+    - asserted `Last Maintenance (S/F)` renders non-`n/a` values.
+  - This closes explicit end-to-end regression coverage for overview telemetry UI.
+- Added operator-facing telemetry semantics copy/tooltips:
+  - Updated admin overview snapshot UI:
+    - added concise helper copy clarifying telemetry scope (admin maintenance endpoints only).
+    - added tooltip text for:
+      - `Maintenance Actions (S/F)`
+      - `Last Maintenance (S/F)`
+  - Updated admin readiness console UI:
+    - added concise helper copy clarifying success/failure semantics.
+    - added tooltip text for maintenance telemetry KPI cards.
+  - Updated runbook:
+    - `OPERATIONS_RUNBOOK.md` now documents telemetry semantics and interpretation.
+- Added overview maintenance health status chip:
+  - Overview API now computes and returns:
+    - `readiness.maintenanceHealth` (`healthy` | `warning` | `unknown`)
+    - logic:
+      - `unknown` when no maintenance telemetry exists,
+      - `healthy` when no failures exist or last success is newer than/equal to last failure,
+      - `warning` when failures exist and are not yet superseded by a later success.
+  - Overview UI now renders `Last Maintenance Health` status card.
+  - Updated coverage:
+    - `tests/unit/fastlane/api-admin-overview-route.test.ts` includes warning-path assertion.
+    - `tests/e2e/fastlane.spec.ts` asserts `HEALTHY` status renders in admin overview flow.
+- Added lightweight health legend for overview interpretation:
+  - Updated admin overview snapshot copy with explicit legend:
+    - `healthy` = no active failure trend
+    - `warning` = latest signal is failure
+    - `unknown` = no telemetry yet
+  - Added E2E assertion to ensure legend text renders in overview flow.
+- Added “maintenance health changed” indicator in overview snapshot:
+  - `src/components/fastlane/admin-overview-snapshot.tsx` now compares maintenance health across refreshes.
+  - Renders transient status line when health transitions (e.g. `healthy -> warning`).
+  - Clears indicator when there is no transition or session resets.
+  - Updated E2E flow (`tests/e2e/fastlane.spec.ts`) to:
+    - simulate health transition between refreshes,
+    - assert warning health renders,
+    - assert change-indicator text appears.
+- Added per-route maintenance telemetry breakdown in readiness:
+  - Extended telemetry snapshot aggregation:
+    - `src/lib/fastlane/maintenance-ops-telemetry.ts`
+    - now returns `byRoute` counters for:
+      - `replay` success/failure
+      - `throttle` success/failure
+      - `run` success/failure
+  - Extended admin readiness API:
+    - `GET /api/admin/fastlane/readiness` now includes route-level fields:
+      - `maintenanceReplaySuccessCount` / `maintenanceReplayFailureCount`
+      - `maintenanceThrottleSuccessCount` / `maintenanceThrottleFailureCount`
+      - `maintenanceRunSuccessCount` / `maintenanceRunFailureCount`
+  - Extended readiness UI:
+    - `src/components/fastlane/admin-readiness-console.tsx`
+    - added compact `Maintenance Route Telemetry` table (route vs success/failure counts).
+  - Updated tests:
+    - `tests/unit/fastlane/api-admin-readiness-route.test.ts` covers new fields.
+    - `tests/e2e/fastlane.spec.ts` readiness mocks/assertions include route telemetry rows.
+- Surfaced route-level maintenance summary in admin overview:
+  - Overview API now returns compact route summary under readiness:
+    - `maintenanceRouteSummary.replay|throttle|run` success/failure counts
+    - `maintenanceRouteSummary.worstFailureRoute`
+  - Overview UI now shows:
+    - `Route Failures (R/T/U)`
+    - `Worst Failure Route`
+  - Updated tests:
+    - `tests/unit/fastlane/api-admin-overview-route.test.ts` asserts summary passthrough and worst-route selection.
+    - `tests/e2e/fastlane.spec.ts` asserts route-failure vector and worst-route card rendering.
+- Added runbook first-response guidance for overview worst-route signal:
+  - Updated `OPERATIONS_RUNBOOK.md` with:
+    - `Route Failures (R/T/U)` interpretation,
+    - `Worst Failure Route` semantics,
+    - direct first-response sequence per route (`REPLAY`, `THROTTLE`, `RUN`, `NONE`).
+- Added route-aware action hint in admin overview snapshot:
+  - `src/components/fastlane/admin-overview-snapshot.tsx` now maps `worstFailureRoute` to a concrete next action hint.
+  - Added direct link to readiness actions (`/admin/fastlane/readiness`) from overview hint line.
+  - E2E assertion updated to verify:
+    - route-specific hint text (e.g., throttle cleanup dry-run),
+    - readiness-action link target.
+- Added “last telemetry update” operator-confidence signal in overview:
+  - Overview API now returns:
+    - `readiness.lastMaintenanceTelemetryAt`
+    - computed as latest of `lastMaintenanceSuccessAt` and `lastMaintenanceFailureAt`.
+  - Overview UI now shows:
+    - `Last Telemetry Update` card with localized timestamp fallback (`n/a`).
+  - Updated tests:
+    - `tests/unit/fastlane/api-admin-overview-route.test.ts` asserts healthy and warning path timestamp values.
+    - `tests/e2e/fastlane.spec.ts` overview flow asserts `Last Telemetry Update` renders a non-`n/a` value.
+- Validation:
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added compact telemetry freshness label in admin overview:
+  - Extended freshness utilities:
+    - `src/lib/fastlane/snapshot-freshness.ts`
+    - new helper `getCompactTelemetryFreshness()` returns concise labels:
+      - `<5m`, `Xm`, `Xh`, or `stale`.
+  - Updated overview UI telemetry metric:
+    - `src/components/fastlane/admin-overview-snapshot.tsx`
+    - `Last Telemetry Update` now renders:
+      - localized timestamp
+      - compact freshness label (`Freshness: ...`) with stale coloring.
+  - Updated styles:
+    - `src/components/fastlane/admin-overview-snapshot.module.css`
+    - added `metricMeta` for secondary freshness line.
+  - Updated tests:
+    - `tests/unit/fastlane/snapshot-freshness.test.ts` adds coverage for compact telemetry freshness buckets.
+    - `tests/e2e/fastlane.spec.ts` overview snapshot flow now asserts telemetry freshness line renders (stale path).
+- Validation:
+  - `npm run test:fastlane -- tests/unit/fastlane/snapshot-freshness.test.ts tests/unit/fastlane/api-admin-overview-route.test.ts` passed.
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added route-level telemetry freshness chips in readiness:
+  - Extended maintenance telemetry snapshot shape:
+    - `src/lib/fastlane/maintenance-ops-telemetry.ts`
+    - `byRoute.replay|throttle|run` now includes `lastEventAt`.
+  - Extended readiness API payload:
+    - `src/app/api/admin/fastlane/readiness/route.ts`
+    - added route fields in `operations`:
+      - `maintenanceReplayLastEventAt`
+      - `maintenanceThrottleLastEventAt`
+      - `maintenanceRunLastEventAt`
+  - Updated readiness UI:
+    - `src/components/fastlane/admin-readiness-console.tsx`
+    - `Maintenance Route Telemetry` table now includes `Freshness` column per route.
+    - freshness uses compact labels (`<5m`, `Xm`, `Xh`, `stale`) with severity coloring.
+  - Updated tests:
+    - `tests/unit/fastlane/api-admin-readiness-route.test.ts` asserts new route timestamp fields.
+    - `tests/e2e/fastlane.spec.ts` readiness flow now asserts route freshness rendering.
+- Validation:
+  - `npm run test:fastlane -- tests/unit/fastlane/api-admin-readiness-route.test.ts` passed.
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added route freshness interpretation legend in readiness:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - Added concise copy under `Maintenance Route Telemetry`:
+      - `Freshness legend: fresh <60m, stale >=60m or unknown.`
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` now asserts legend text renders in readiness flow.
+    - assertion normalized to accept typography variants (`>=` and `≥`) for stability.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Refactored readiness route telemetry row rendering:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - introduced `maintenanceRouteRows` view-model array,
+    - computes compact freshness exactly once per route row,
+    - renders telemetry table via a single mapped row block.
+  - This removes repeated helper calls in JSX and keeps row rendering deterministic and easier to maintain.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Extracted readiness telemetry row model into shared pure helper:
+  - Added `src/lib/fastlane/maintenance-route-telemetry.ts`:
+    - `createMaintenanceRouteRows()` builds replay/throttle/run rows from telemetry input.
+    - computes compact freshness labels/tones deterministically (supports injected `nowMs` for tests).
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - now consumes `createMaintenanceRouteRows()` instead of inline row-model construction.
+    - preserves existing table output and severity styling.
+  - Added unit coverage:
+    - `tests/unit/fastlane/maintenance-route-telemetry.test.ts`
+    - verifies row order/labels, null timestamp behavior, and freshness bucket mapping.
+- Validation:
+  - `npm run test:fastlane -- tests/unit/fastlane/maintenance-route-telemetry.test.ts tests/unit/fastlane/snapshot-freshness.test.ts` passed.
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added stale-first telemetry ordering toggle in readiness UI:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - Added `Stale first ordering` checkbox in `Maintenance Route Telemetry`.
+    - Default preserves route order (`Replay`, `Throttle`, `Run`).
+    - When enabled, rows sort by freshness severity (`warn` stale first, then fresh, then unknown), with stable tie-breaker by route label.
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` readiness flow now asserts:
+      - default second row is `Throttle cleanup`,
+      - after enabling stale-first toggle, second row becomes `Unified run`.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Persisted readiness stale-first telemetry preference in session storage:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - added `STALE_FIRST_STORAGE_KEY` session key,
+    - hydrate toggle state on mount from session storage,
+    - persist toggle updates as `'1' | '0'`.
+  - Updated E2E flow:
+    - `tests/e2e/fastlane.spec.ts` now verifies stale-first checkbox remains checked after navigating away and back to readiness (with refresh),
+    - verifies row ordering persists (`Unified run` remains prioritized in sorted view).
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added telemetry preference reset control in readiness:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - added `Reset telemetry preferences` action in `Maintenance Route Telemetry`,
+    - resets stale-first ordering toggle to default (`false`),
+    - clears session persistence key for the telemetry ordering preference.
+  - Updated E2E flow:
+    - `tests/e2e/fastlane.spec.ts` now verifies:
+      - stale-first enabled ordering,
+      - reset action restores default row order,
+      - navigation back to readiness keeps reset state (after refresh).
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added explicit helper text for telemetry preference reset semantics:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - added concise operator-facing copy:
+      - `Reset restores default route ordering and clears this page session preference.`
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` now asserts helper text renders in readiness telemetry section.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added telemetry preference action timestamp feedback:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - added session key `fastlane.admin.readiness.pref_updated_at`,
+    - tracks latest preferences action time for stale-first toggle and reset action,
+    - renders `Preferences updated: <time>` helper line in telemetry preferences section.
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` now asserts `Preferences updated:` appears after stale-first interaction.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added compact telemetry preferences status badge:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - renders `Preferences status: Default|Customized` in telemetry controls section.
+    - status is driven by stale-first preference state and color-coded for quick scanning.
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` readiness flow now asserts:
+      - default status before toggle,
+      - customized status after enabling stale-first,
+      - default status after reset.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added accessible `aria-live` feedback for telemetry preference updates:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - `Preferences updated` message now renders as a polite live region:
+      - `role="status"`
+      - `aria-live="polite"`
+      - `aria-atomic="true"`
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` now asserts the preferences-updated status region has `aria-live="polite"`.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added lightweight cooldown guard for telemetry preference write bursts:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - introduced `TELEMETRY_PREF_WRITE_COOLDOWN_MS` (`750ms`),
+    - added ref-tracked last write timestamp,
+    - suppresses rapid repeat writes of `Preferences updated` timestamp to session storage during quick interaction bursts.
+  - Existing telemetry preference behavior remains unchanged for normal interaction cadence.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added explicit unit coverage for telemetry preference cooldown decision logic:
+  - Added pure helper:
+    - `src/lib/fastlane/telemetry-preference-cooldown.ts`
+    - `shouldWriteTelemetryPreferenceUpdate(...)`
+  - Integrated helper into readiness UI:
+    - `src/components/fastlane/admin-readiness-console.tsx`
+    - cooldown guard now uses shared helper rather than inline timing condition.
+  - Added focused unit tests:
+    - `tests/unit/fastlane/telemetry-preference-cooldown.test.ts`
+    - covers:
+      - blocked write inside cooldown window
+      - allow write at cooldown boundary
+      - allow write on backward clock skew
+      - fail-open behavior for invalid numeric values
+- Validation:
+  - `npm run test:fastlane -- tests/unit/fastlane/telemetry-preference-cooldown.test.ts` passed.
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Surfaced telemetry preference cooldown expectation in helper copy:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - added explicit copy in telemetry controls section:
+      - `Preference update notifications are rate-limited to one update every 0.75 seconds.`
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` now asserts cooldown helper text is visible in readiness flow.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added compact “last preference action type” label near update timestamp:
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - tracks last action type (`toggle` or `reset`) with session persistence,
+    - appends action label in live status line:
+      - `Preferences updated: <time> (Action: toggle|reset)`.
+  - Cooldown behavior adjusted for action clarity:
+    - action type now updates immediately even when timestamp write is cooldown-throttled.
+    - timestamp persistence remains rate-limited.
+  - Updated E2E coverage:
+    - `tests/e2e/fastlane.spec.ts` readiness flow now asserts:
+      - action label becomes `toggle` after stale-first check,
+      - action label becomes `reset` after reset action.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Extracted telemetry/admin session-state keys into shared constants module:
+  - Added `src/lib/fastlane/admin-session-storage.ts`:
+    - `ADMIN_TOKEN_STORAGE_KEY`
+    - `READINESS_STALE_FIRST_STORAGE_KEY`
+    - `READINESS_PREF_UPDATED_AT_STORAGE_KEY`
+    - `READINESS_PREF_LAST_ACTION_STORAGE_KEY`
+  - Updated admin consoles to use shared constants:
+    - `src/components/fastlane/admin-readiness-console.tsx`
+    - `src/components/fastlane/admin-overview-snapshot.tsx`
+    - `src/components/fastlane/admin-webhook-console.tsx`
+    - `src/components/fastlane/admin-kpi-console.tsx`
+  - Normalized cooldown/action behavior:
+    - action label writes immediately,
+    - timestamp writes remain cooldown-throttled.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Extracted telemetry preference copy strings into named constants:
+  - Added `src/lib/fastlane/telemetry-preference-copy.ts` with:
+    - status labels (`Default`, `Customized`)
+    - status label copy
+    - reset button label
+    - reset helper copy
+    - cooldown helper copy
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - now consumes telemetry preference copy constants,
+    - preserves existing rendered text and behavior.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Extracted shared admin UI action labels into central copy map:
+  - Added `src/lib/fastlane/admin-ui-copy.ts` with shared labels:
+    - `Login`
+    - `Logout`
+    - `Clear saved token`
+    - `Refresh snapshot`
+    - `Refresh readiness`
+  - Updated admin consoles to consume shared labels:
+    - `src/components/fastlane/admin-readiness-console.tsx`
+    - `src/components/fastlane/admin-overview-snapshot.tsx`
+    - `src/components/fastlane/admin-kpi-console.tsx`
+    - `src/components/fastlane/admin-webhook-console.tsx`
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Added focused unit coverage for shared admin constants/copy stability:
+  - Added `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`:
+    - asserts stable values for:
+      - session storage keys (`admin-session-storage`)
+      - telemetry preference copy strings (`telemetry-preference-copy`)
+      - shared admin action labels (`admin-ui-copy`)
+  - This guards accidental text/key drift during future refactors.
+- Validation:
+  - `npm run test:fastlane -- tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` passed.
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Extracted remaining readiness-specific action labels into shared admin UI copy map:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts` with additional labels:
+    - `replayCleanupDryRun`
+    - `purgeExpiredReplayMarkers`
+    - `throttleCleanupDryRun`
+    - `purgeStaleThrottleRows`
+    - `runAllMaintenanceDryRun`
+    - `runAllMaintenanceNow`
+  - Updated `src/components/fastlane/admin-readiness-console.tsx` to consume those shared labels.
+  - Updated constants unit test snapshot:
+    - `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+- Validation:
+  - `npm run test:fastlane -- tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` passed.
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane:all` passed (`32 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue final production polish by extracting remaining admin-form helper texts (e.g., auth/session status lines) into shared copy constants.
+- Extracted remaining shared admin helper/status/form copy into centralized constants and helper function:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts`:
+    - added action labels:
+      - `saveToken`
+      - `clearToken`
+      - `loadKpi`
+      - `loadFailedEvents`
+      - `reprocessBatch`
+    - added field labels:
+      - `ADMIN_FIELD_LABELS.adminToken`
+      - `ADMIN_FIELD_LABELS.webhookOperatorId`
+    - added error copy:
+      - `ADMIN_ERROR_COPY.enterTokenFirst`
+    - added helper copy:
+      - `ADMIN_HELPER_COPY.webhookSessionStorage`
+    - added helper function:
+      - `getAdminSessionAuthStatusCopy(authenticated)`
+  - Updated consumers to use shared constants/helper:
+    - `src/components/fastlane/admin-readiness-console.tsx`
+    - `src/components/fastlane/admin-overview-snapshot.tsx`
+    - `src/components/fastlane/admin-kpi-console.tsx`
+    - `src/components/fastlane/admin-webhook-console.tsx`
+- Expanded constants unit coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`:
+    - verifies new admin action labels,
+    - verifies field labels/error/helper copy,
+    - verifies `getAdminSessionAuthStatusCopy` output for active/inactive states.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by centralizing remaining repeated dashboard/console display copy and then tighten unit coverage for shared copy modules.
+- Additional verification:
+  - `npm run test:fastlane -- tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` passed and executed full fastlane unit suite (`54 files, 440 tests passed`).
+- Centralized additional duplicated admin auth/input copy into shared module:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts`:
+    - `ADMIN_ERROR_COPY.loginFailed`
+    - `ADMIN_PLACEHOLDER_COPY.token`
+    - `ADMIN_PLACEHOLDER_COPY.bearerToken`
+    - `ADMIN_PLACEHOLDER_COPY.webhookOperator`
+- Updated admin consoles to consume shared login failure and placeholder copy:
+  - `src/components/fastlane/admin-readiness-console.tsx`
+  - `src/components/fastlane/admin-overview-snapshot.tsx`
+  - `src/components/fastlane/admin-kpi-console.tsx`
+  - `src/components/fastlane/admin-webhook-console.tsx`
+- Tightened webhook operator defaults to shared copy source:
+  - initial state and reset/logout fallback now use `ADMIN_PLACEHOLDER_COPY.webhookOperator`.
+  - widened operator state to `string` to avoid literal-type narrowing issues.
+- Expanded shared constants unit coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` to validate new error and placeholder constants.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by extracting remaining repeated admin table/empty-state labels into a shared admin copy map and adding assertions for that map.
+- Centralized repeated admin table/empty-state copy and action labels:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts` with:
+    - `ADMIN_ACTION_LABELS.reprocess`
+    - `ADMIN_TABLE_LABELS` (`count`, `event`, `status`, `error`, `stripeEvent`, `type`, `replayAudit`, `created`, `action`)
+    - `ADMIN_WEBHOOK_COPY` (`queryLimitLabel`, `noFailedEventsLoaded`, `lastReprocessResultHeading`, `noReprocessRunYet`)
+- Updated webhook console to consume shared table/empty-state/action copy:
+  - `src/components/fastlane/admin-webhook-console.tsx`
+    - query limit label now uses `ADMIN_WEBHOOK_COPY.queryLimitLabel`
+    - both table header sets use `ADMIN_TABLE_LABELS`
+    - empty states use `ADMIN_WEBHOOK_COPY`
+    - per-row replay button uses `ADMIN_ACTION_LABELS.reprocess`
+- Updated KPI console to consume shared table header labels:
+  - `src/components/fastlane/admin-kpi-console.tsx`
+    - uses `ADMIN_TABLE_LABELS.count` and `ADMIN_TABLE_LABELS.event` in funnel/top-events tables.
+- Expanded constants unit coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` to assert:
+    - new `reprocess` action label,
+    - full `ADMIN_TABLE_LABELS` map,
+    - full `ADMIN_WEBHOOK_COPY` map.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by extracting repeated KPI section/headline strings into shared copy constants and add/adjust tests for stable copy snapshots.
+- Centralized KPI dashboard display copy into shared constants:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts` with `ADMIN_KPI_COPY` for:
+    - dashboard heading/subheading
+    - rolling window label
+    - section headers (conversion funnel/top events/auth health)
+    - funnel headers/step labels
+    - KPI metric labels
+    - auth table row labels
+- Updated KPI console to consume shared KPI copy constants:
+  - `src/components/fastlane/admin-kpi-console.tsx`
+    - replaced inline strings for headings/labels/rows with `ADMIN_KPI_COPY`.
+- Expanded copy stability unit coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - added full `ADMIN_KPI_COPY` object expectation.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by consolidating remaining readiness console metric labels/tooltips into a shared copy map and extending constants tests.
+- Centralized readiness console metric/section copy into shared constants:
+  - Added `ADMIN_READINESS_COPY` in `src/lib/fastlane/admin-ui-copy.ts` for:
+    - throttle retention label
+    - KPI metric labels
+    - maintenance metric tooltips
+    - section headers and snapshot prefix
+    - telemetry legend and stale-first label
+- Updated readiness console to consume shared readiness copy:
+  - `src/components/fastlane/admin-readiness-console.tsx`
+    - replaced inline metric labels/tooltips/section strings with `ADMIN_READINESS_COPY`.
+- Expanded constants stability coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` to assert full `ADMIN_READINESS_COPY` map.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by consolidating readiness checks table strings (check names/status labels) into shared copy constants and extending tests.
+- Centralized remaining readiness table/check strings into shared constants:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts` (`ADMIN_READINESS_COPY`) with:
+    - maintenance telemetry table headers (`Route`, `Success`, `Failure`, `Freshness`)
+    - readiness checks headers (`Check`, `Status`)
+    - readiness check names (database/auth/auth email/billing/sentry/alerts/ready)
+    - readiness status values (`ok`, `missing`, `yes`, `not yet`)
+- Updated readiness console to consume shared readiness table/check copy:
+  - `src/components/fastlane/admin-readiness-console.tsx`
+    - removed remaining inline strings in maintenance telemetry and readiness checks tables.
+- Expanded constants stability test coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - added assertions for all newly introduced readiness header/check/status constants.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by extracting remaining overview snapshot copy blocks (legends/hints/metric labels) into shared constants and extending copy tests.
+- Centralized overview snapshot copy into shared constants:
+  - Added `ADMIN_OVERVIEW_COPY` in `src/lib/fastlane/admin-ui-copy.ts` covering:
+    - headings/subheadings/legends
+    - KPI window and status prefixes
+    - overview metric labels/tooltips
+    - not-available token and freshness prefix
+    - worst-route hint action/detail strings
+- Updated overview snapshot console to consume shared overview copy:
+  - `src/components/fastlane/admin-overview-snapshot.tsx`
+    - imports and uses `ADMIN_OVERVIEW_COPY` for UI labels and hint text
+    - `getWorstRouteHint` now uses shared copy constants
+    - maintenance health change status string now uses shared prefix constant
+- Expanded constants stability tests:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - added full `ADMIN_OVERVIEW_COPY` object expectation.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by extracting remaining shared list value constants (window-day options and other repeated numeric option sets) into centralized config constants with focused unit assertions.
+- Centralized repeated admin numeric options/ranges into shared config:
+  - Added `src/lib/fastlane/admin-ui-config.ts` with:
+    - `ADMIN_OVERVIEW_WINDOW_OPTIONS`
+    - `ADMIN_OVERVIEW_DEFAULT_WINDOW_DAYS`
+    - `ADMIN_KPI_DAY_RANGE`
+    - `ADMIN_WEBHOOK_LIMIT_RANGE`
+    - `ADMIN_READINESS_RETENTION_RANGE`
+    - `ADMIN_MAINTENANCE_BATCH_LIMIT`
+- Updated admin consoles to consume shared config constants:
+  - `src/components/fastlane/admin-overview-snapshot.tsx`
+    - uses shared overview window options/default and renders options from map.
+  - `src/components/fastlane/admin-kpi-console.tsx`
+    - uses shared KPI min/max/fallback range.
+  - `src/components/fastlane/admin-webhook-console.tsx`
+    - uses shared webhook limit min/max/fallback range.
+  - `src/components/fastlane/admin-readiness-console.tsx`
+    - uses shared throttle retention min/max/fallback range.
+    - uses shared maintenance batch limit for replay/throttle/run payloads.
+- Expanded constants test coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - added assertions for all `admin-ui-config` constants.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by extracting remaining admin page titles/subheadings into shared copy constants for webhook/readiness pages and extending copy tests.
+- Centralized remaining admin page-level headings/subheadings into shared copy constants:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts`:
+    - `ADMIN_WEBHOOK_COPY.heading`
+    - `ADMIN_WEBHOOK_COPY.subheading`
+    - `ADMIN_READINESS_COPY.heading`
+    - `ADMIN_READINESS_COPY.subheading`
+    - `ADMIN_READINESS_COPY.maintenanceTelemetrySubheading`
+- Updated admin console components to consume shared heading/subheading copy:
+  - `src/components/fastlane/admin-webhook-console.tsx`
+    - page title/subtitle now sourced from `ADMIN_WEBHOOK_COPY`.
+  - `src/components/fastlane/admin-readiness-console.tsx`
+    - page title and top explanatory text now sourced from `ADMIN_READINESS_COPY`.
+- Expanded copy stability unit coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - added expectations for newly centralized webhook/readiness heading/subheading constants.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue production polish by extracting remaining shared API error fallback copy fragments in admin consoles into a centralized error copy map and extending test assertions.
+- Centralized admin API fallback error templates into shared copy helper:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts`:
+    - expanded `ADMIN_ERROR_COPY` with API fallback message keys:
+      - `failedToLoadReadiness`
+      - `replayCleanupFailed`
+      - `throttleCleanupFailed`
+      - `maintenanceRunFailed`
+      - `snapshotFailed`
+      - `failedToLoadKpi`
+      - `failedToFetch`
+      - `reprocessFailed`
+    - added `getAdminApiFallbackError(message, status)` to format stable fallback strings.
+- Updated admin consoles to use shared fallback formatter/messages:
+  - `src/components/fastlane/admin-readiness-console.tsx`
+  - `src/components/fastlane/admin-overview-snapshot.tsx`
+  - `src/components/fastlane/admin-kpi-console.tsx`
+  - `src/components/fastlane/admin-webhook-console.tsx`
+- Expanded constants/helper tests:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`:
+    - asserts expanded `ADMIN_ERROR_COPY` map
+    - asserts `getAdminApiFallbackError('Snapshot failed', 500)` output.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Continue final polish by extracting remaining non-shared dashboard metric labels (e.g., KPI "Total events") into centralized copy constants and extending the copy test snapshot.
+- Finalized KPI copy normalization by centralizing the last inline KPI metric label:
+  - Updated `src/lib/fastlane/admin-ui-copy.ts`:
+    - added `ADMIN_KPI_COPY.metricTotalEvents` (`Total events`).
+  - Updated `src/components/fastlane/admin-kpi-console.tsx`:
+    - `Total events ({windowDays}d)` now uses `ADMIN_KPI_COPY.metricTotalEvents`.
+- Expanded copy stability coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - added `metricTotalEvents` assertion under `ADMIN_KPI_COPY`.
+- Validation:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Run a final literal-sweep pass across admin and shared FastLane UI modules to confirm no non-dynamic user-facing copy remains outside centralized copy/config modules, then lock with tests.
+- Batched shared-copy cleanup pass (fast-check cadence):
+  - Added common UI display tokens in `src/lib/fastlane/admin-ui-copy.ts`:
+    - `ADMIN_COMMON_COPY` (`notAvailable`, `dash`, `ok`, `failed`, `countPrefix`, `byPrefix`, `atPrefix`)
+  - Extended readiness copy constants with maintenance mode labels:
+    - `maintenanceDryRunMode`, `maintenanceCleanupMode`,
+      `throttleDryRunMode`, `throttleCleanupMode`,
+      `allMaintenanceDryRunMode`, `allMaintenanceCleanupMode`
+  - Wired readiness console to shared mode/not-available copy:
+    - `src/components/fastlane/admin-readiness-console.tsx`
+  - Wired webhook console to shared audit/status placeholders:
+    - `src/components/fastlane/admin-webhook-console.tsx`
+      - uses shared `count:/by:/at:` prefixes
+      - uses shared `-` placeholder and `ok/failed` status labels
+- Expanded constants stability tests:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - asserts `ADMIN_COMMON_COPY` map
+    - asserts new readiness maintenance mode constants.
+- Fast validation (batched-pass mode):
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:fastlane -- tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` passed (`54 files, 441 tests`).
+
+## Next Target
+- Continue batched literal/config sweep with 1-2 more grouped passes, then run a milestone full E2E+a11y gate.
+- Batched storage-key centralization pass (fast-check cadence):
+  - Updated `src/lib/fastlane/admin-session-storage.ts`:
+    - added `ADMIN_OPERATOR_STORAGE_KEY` (`fastlane.admin.operator`)
+    - added `SNAPSHOT_WINDOW_DAYS_STORAGE_KEY` (`fastlane.admin.snapshot.window_days`)
+  - Updated overview snapshot storage usage:
+    - `src/components/fastlane/admin-overview-snapshot.tsx`
+      - replaced local `WINDOW_STORAGE_KEY` with `SNAPSHOT_WINDOW_DAYS_STORAGE_KEY`.
+  - Updated webhook operator storage usage:
+    - `src/components/fastlane/admin-webhook-console.tsx`
+      - replaced local `OPERATOR_STORAGE_KEY` with `ADMIN_OPERATOR_STORAGE_KEY`.
+- Expanded storage constants test coverage:
+  - Updated `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+    - added assertions for `ADMIN_OPERATOR_STORAGE_KEY` and `SNAPSHOT_WINDOW_DAYS_STORAGE_KEY`.
+- Fast validation (batched-pass mode):
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:fastlane -- tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` passed (`54 files, 441 tests`).
+
+## Next Target
+- One more batched cleanup pass, then run milestone full E2E+a11y validation gate.
+- Batched final-copy cleanup pass before milestone gate:
+  - Updated `src/lib/fastlane/telemetry-preference-copy.ts`:
+    - added `TELEMETRY_PREFERENCE_UPDATED_PREFIX` (`Preferences updated:`)
+    - added `TELEMETRY_PREFERENCE_ACTION_PREFIX` (`Action:`)
+  - Updated `src/lib/fastlane/admin-ui-copy.ts`:
+    - extended `ADMIN_WEBHOOK_COPY` with summary labels:
+      - `reprocessedLabel`
+      - `succeededLabel`
+      - `failedLabel`
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - telemetry status line now uses shared `TELEMETRY_PREFERENCE_UPDATED_PREFIX` and `TELEMETRY_PREFERENCE_ACTION_PREFIX`.
+  - Updated `src/components/fastlane/admin-webhook-console.tsx`:
+    - summary line now uses shared `ADMIN_WEBHOOK_COPY` labels.
+  - Expanded constants tests:
+    - `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`
+      - telemetry prefix constants asserted
+      - webhook summary label constants asserted.
+- Fast validation (batched-pass mode):
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:fastlane -- tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` passed (`54 files, 441 tests`).
+- Milestone full validation gate:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Next Target
+- Final wrap-up sweep: produce completion checklist of remaining work (if any), then execute final stabilization/ship pass.
+- Batched cleanup pass (fast-check cadence): centralized remaining status/summary literals.
+  - Updated `src/lib/fastlane/telemetry-preference-copy.ts`:
+    - `TELEMETRY_PREFERENCE_UPDATED_PREFIX`
+    - `TELEMETRY_PREFERENCE_ACTION_PREFIX`
+  - Updated `src/lib/fastlane/admin-ui-copy.ts`:
+    - `ADMIN_WEBHOOK_COPY.reprocessedLabel`
+    - `ADMIN_WEBHOOK_COPY.succeededLabel`
+    - `ADMIN_WEBHOOK_COPY.failedLabel`
+  - Updated `src/components/fastlane/admin-readiness-console.tsx`:
+    - telemetry status line now uses shared `updated` and `action` prefixes.
+  - Updated `src/components/fastlane/admin-webhook-console.tsx`:
+    - reprocess summary line now uses shared webhook summary labels.
+  - Expanded constants tests in `tests/unit/fastlane/admin-copy-and-storage-constants.test.ts`:
+    - telemetry prefix constants asserted.
+    - webhook summary labels asserted.
+- Fast validation (batched-pass mode):
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:fastlane -- tests/unit/fastlane/admin-copy-and-storage-constants.test.ts` passed (`54 files, 441 tests`).
+
+## Next Target
+- Final ship pass: run full literal/config sweep verification and final full validation gate before phase close.
+- Final ship pass completed.
+- Verification sweep:
+  - Admin UI copy/config centralization remained consistent after prior batched passes.
+  - No additional critical literal/config drift found in admin surfaces requiring new structural changes.
+- Final full validation gate:
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+
+## Phase Status
+- Admin copy/config hardening + validation phase is complete.
+- Started next recommended phase: release workflow operationalization.
+- Added staged gate npm scripts to codify faster iteration cadence:
+  - `test:gate:fast`
+  - `test:gate:milestone`
+  - `test:gate:ship`
+  - File: `package.json`
+- Documented staged gate usage under Testing:
+  - File: `README.md`
+- Validation:
+  - `npm run test:gate:fast` passed.
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+- Note:
+  - `npm run test:gate:milestone` hit transient local webserver bind `EPERM` in this shell context, while equivalent direct commands (`test:e2e:fastlane` and `test:e2e:fastlane:a11y`) passed cleanly.
+
+## Phase Status
+- Admin hardening phase remains complete.
+- Release workflow phase is now initialized and operational with staged gates.
+- Executed strict release-prep env setup improvements.
+- Added production env template:
+  - `.env.production.example`
+  - includes all strict-required vars with format-valid placeholders and 32+ char secret placeholders.
+- Updated local env example secrets to meet strict minimum guidance:
+  - `.env.local.example`
+- Updated docs for production env workflow:
+  - `README.md`
+    - clarified production env source (`.env.production.example`)
+    - added exact shell commands to run strict preflight locally.
+- Validation:
+  - `set -a; source .env.production.example; set +a; npm run check:env:strict` passed (`Environment preflight passed (strict mode).`)
+
+## Phase Status
+- Completed full ship-gate execution in escalated mode due sandbox socket limits.
+- Release-gate hardening completed:
+  - Installed local Lighthouse CLI dependency:
+    - `@lhci/cli` added to `devDependencies` (`package.json`, `package-lock.json`).
+  - Hardened Lighthouse runner Chrome detection:
+    - `scripts/run-lighthouse.mjs` now auto-detects Playwright Chromium and sets `CHROME_PATH` / `LIGHTHOUSE_CHROMIUM_PATH` when unset.
+- Validation (strict production env loaded from `.env.production.example`):
+  - `npm run lint` passed.
+  - `npm run type-check` passed.
+  - `npm run check:launch-checklist` passed.
+  - `npm run check:vercel-cron` passed.
+  - `npm run check:env:strict` passed.
+  - `npm run test:fastlane` passed (`54 files, 441 tests`).
+  - `npm run test:e2e:fastlane` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:mobile` passed (`16 passed`).
+  - `npm run test:e2e:fastlane:a11y` passed (`8 passed`).
+  - `npm run test:lighthouse:strict` passed (assertions pass with performance warnings).
+  - `npm run test:gate:ship` passed end-to-end.
+
+## Next Target
+- Performance optimization pass to raise Lighthouse performance category from current warning range:
+  - `/fastlane`: ~0.46
+  - `/fastlane/app?demo=1`: ~0.69
+
+## Phase Status
+- Performance optimization + release validation complete.
+- Updated Lighthouse CI to audit production output instead of dev server:
+  - `lighthouserc.json`
+    - `startServerCommand` now uses `npm run build && npm run start -- --hostname 127.0.0.1 --port 3100`
+    - added `startServerReadyPattern` and `startServerReadyTimeout`.
+- Full ship gate rerun passed end-to-end after optimization:
+  - `npm run test:gate:ship` passed.
+- Final Lighthouse category scores (strict mode):
+  - `/fastlane`: performance `0.95`, accessibility `0.90`, best-practices `1.00`, seo `1.00`.
+  - `/fastlane/app?demo=1`: performance `0.94`, accessibility `0.93`, best-practices `1.00`, seo `1.00`.
+  - `.lighthouseci/assertion-results.json`: `[]` (no failing/warning assertions).
+
+## Completion Snapshot
+- Engineering plan and launch checklist are fully complete in-repo.
+- Remaining go-live actions are external/environmental only (deploy with real production secrets and live billing/webhook credentials).
